@@ -20,4 +20,8 @@
          <loc>https://kubernetes.github.io/autoscaler/limitations/</loc>
          <lastmod>2024-11-23</lastmod>
     </url>
+    <url>
+         <loc>https://kubernetes.github.io/autoscaler/limitcontrol/</loc>
+         <lastmod>2024-11-23</lastmod>
+    </url>
 </urlset>
