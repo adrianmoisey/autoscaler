@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
+set -ex
 
 REQUIREMENTS="${GITHUB_WORKSPACE}/vertical-pod-autoscaler/docs/requirements.txt"
 
