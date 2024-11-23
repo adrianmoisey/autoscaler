@@ -2,6 +2,7 @@ site_name: Vertical Pod Autoscaler
 repo_name: "kubernetes/autoscaler"
 repo_url: https://github.com/kubernetes/autoscaler
 site_url: https://kubernetes.github.io/autoscaler
+trademark: https://www.linuxfoundation.org/legal/trademark-usage
 edit_uri: edit/master/docs/
 
 # Extensions
@@ -45,6 +46,7 @@ markdown_extensions:
 
 theme:
   name: material
+  favicon: images/k8s-favicon.png
   features:
     - navigation.tabs
     - navigation.tabs.sticky
