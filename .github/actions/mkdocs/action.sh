@@ -35,17 +35,27 @@ mkdocs build --config-file "${GITHUB_WORKSPACE}/vertical-pod-autoscaler/mkdocs.y
 
 git clone --branch=gh-pages --depth=1 "${remote_repo}" gh-pages
 cd gh-pages
-
-# copy current index file index.yaml before any change
-temp_worktree=$(mktemp -d)
-# cp --force "index.yaml" "$temp_worktree/index.yaml"                            <--- fixme
 # remove current content in branch gh-pages
-#git rm -r .                                                  <--- fixme
+git rm -r .
 # copy new doc.
-pwd
-cp -r ../vertical-pod-autoscaler/site/* .
-# restore chart index
-#cp "$temp_worktree/index.yaml" .                                <--- fixme
+mkdir vertical-pod-autoscaler/
+cp -r ../vertical-pod-autoscaler/site/* ./vertical-pod-autoscaler/
+
+cat << EOF > ./index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting...</title>
+    <meta http-equiv="refresh" content="0; URL='/vertical-pod-autoscaler/'" />
+</head>
+<body>
+    <p>If you are not redirected automatically, follow this <a href="/vertical-pod-autoscaler/">link to /vertical-pod-autoscaler/</a>.</p>
+</body>
+</html>
+EOF
+
 # commit changes
 git add .
 git commit -m "Deploy GitHub Pages"
