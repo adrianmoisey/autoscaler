@@ -38,7 +38,7 @@ cd gh-pages
 
 # copy current index file index.yaml before any change
 temp_worktree=$(mktemp -d)
-cp --force "index.yaml" "$temp_worktree/index.yaml"
+# cp --force "index.yaml" "$temp_worktree/index.yaml"
 # remove current content in branch gh-pages
 git rm -r .
 # copy new doc.
