@@ -1,47 +1,3 @@
-# Vertical Pod Autoscaler
-
-## Contents
-- [Contents](#contents)
-- [Intro](#intro)
-- [Limits control](#limits-control)
-- [Known limitations](#known-limitations)
-- [Related links](#related-links)
-
-# Intro
-
-Vertical Pod Autoscaler (VPA) frees users from the necessity of setting
-up-to-date resource limits and requests for the containers in their pods. When
-configured, it will set the requests automatically based on usage and thus
-allow proper scheduling onto nodes so that appropriate resource amount is
-available for each pod. It will also maintain ratios between limits and
-requests that were specified in initial containers configuration.
-
-It can both down-scale pods that are over-requesting resources, and also
-up-scale pods that are under-requesting resources based on their usage over
-time.
-
-Autoscaling is configured with a
-[Custom Resource Definition object](https://kubernetes.io/docs/concepts/api-extension/custom-resources/)
-called [VerticalPodAutoscaler](https://github.com/kubernetes/autoscaler/blob/master/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1/types.go).
-It allows to specify which pods should be vertically autoscaled as well as if/how the
-resource recommendations are applied.
-
-To enable vertical pod autoscaling on your cluster please follow the installation
-procedure described below.
-
-# Limits control
-
-When setting limits VPA will conform to
-[resource policies](https://github.com/kubernetes/autoscaler/blob/master/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1/types.go#L100).
-It will maintain limit to request ratio specified for all containers.
-
-VPA will try to cap recommendations between min and max of
-[limit ranges](https://kubernetes.io/docs/concepts/policy/limit-range/). If limit range conflicts
-with VPA resource policy, VPA will follow VPA policy (and set values outside the limit
-range).
-
-To disable getting VPA recommendations for an individual container, set `mode` to `"Off"` in `containerPolicies`.
-
 # Known limitations
 
 * Whenever VPA updates the pod resources, the pod is recreated, which causes all
@@ -71,11 +27,3 @@ To disable getting VPA recommendations for an individual container, set `mode` t
   causes contention with a lease called `vpa-recommender` held by the GKE system component of the
   same name. To run your own VPA in GKE, make sure to specify a different lease name using
   `--leader-elect-resource-name=vpa-recommender-lease` (or specify your own lease name).
-
-# Related links
-
-* [FAQ](FAQ.md)
-* [Design
-  proposal](https://github.com/kubernetes/design-proposals-archive/blob/main/autoscaling/vertical-pod-autoscaler.md)
-* [API
-  definition](pkg/apis/autoscaling.k8s.io/v1/types.go)
