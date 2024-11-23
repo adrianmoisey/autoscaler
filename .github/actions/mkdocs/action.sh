@@ -42,7 +42,8 @@ temp_worktree=$(mktemp -d)
 # remove current content in branch gh-pages
 #git rm -r .
 # copy new doc.
-cp -r ../site/* .
+pwd
+cp -r ../vertical-pod-autoscaler/site/* .
 # restore chart index
 #cp "$temp_worktree/index.yaml" .
 # commit changes
