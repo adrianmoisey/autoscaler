@@ -40,11 +40,11 @@ cd gh-pages
 temp_worktree=$(mktemp -d)
 # cp --force "index.yaml" "$temp_worktree/index.yaml"
 # remove current content in branch gh-pages
-git rm -r .
+#git rm -r .
 # copy new doc.
 cp -r ../site/* .
 # restore chart index
-cp "$temp_worktree/index.yaml" .
+#cp "$temp_worktree/index.yaml" .
 # commit changes
 git add .
 git commit -m "Deploy GitHub Pages"
