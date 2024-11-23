@@ -72,6 +72,8 @@ nav:
   - Welcome:
       - Welcome: "index.md"
   - Installation: "installation/index.md"
+  - Features:
+      - Limit Control: "limitcontrol/index.md"
   - Examples: "examples/index.md"
   - Known Limitations: "limitations/index.md"
   - FAQ: "faq.md"
