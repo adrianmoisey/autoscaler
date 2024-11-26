@@ -31,7 +31,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           filters: |
             docs:
-             - 'vertical-pod-autoscaler/docs/**/*'
+             - 'docs/**/*'
   docs:
     name: Update
     runs-on: ubuntu-latest

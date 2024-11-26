@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2020 The Kubernetes Authors.
+# Copyright 2024 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 set -ex
 
-REQUIREMENTS="${GITHUB_WORKSPACE}/vertical-pod-autoscaler/docs/requirements.txt"
+REQUIREMENTS="${GITHUB_WORKSPACE}/docs/requirements.txt"
 
 if [ -f "${REQUIREMENTS}" ]; then
     pip install -r "${REQUIREMENTS}"
@@ -31,30 +31,25 @@ fi
 git config --global user.name "$GITHUB_ACTOR"
 git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-mkdocs build --config-file "${GITHUB_WORKSPACE}/vertical-pod-autoscaler/mkdocs.yml"
+mkdocs build --config-file "${GITHUB_WORKSPACE}/docs/mkdocs-root.yml"
+mkdocs build --config-file "${GITHUB_WORKSPACE}/docs/mkdocs-vertical-pod-autoscaler.yml"
 
 git clone --branch=gh-pages --depth=1 "${remote_repo}" gh-pages
 cd gh-pages
+
+# # copy current index file index.yaml and OWNERS before any change
+# temp_worktree=$(mktemp -d)
+# cp --force "index.yaml" "$temp_worktree/index.yaml"
+# cp --force "OWNERS" "$temp_worktree/OWNERS"
+
 # remove current content in branch gh-pages
 git rm -r .
 # copy new doc.
-mkdir vertical-pod-autoscaler/
-cp -r ../vertical-pod-autoscaler/site/* ./vertical-pod-autoscaler/
+cp -r ../site/* .
 
-cat << EOF > ./index.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redirecting...</title>
-    <meta http-equiv="refresh" content="0; URL='/autoscaler/vertical-pod-autoscaler/'" />
-</head>
-<body>
-    <p>If you are not redirected automatically, follow this <a href="/autoscaler/vertical-pod-autoscaler/">link to /autoscaler/vertical-pod-autoscaler/</a>.</p>
-</body>
-</html>
-EOF
+# # restore chart index and OWNERS
+# cp "$temp_worktree/index.yaml" .
+# cp "$temp_worktree/OWNERS" .
 
 # commit changes
 git add .
