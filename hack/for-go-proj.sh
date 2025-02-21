@@ -52,7 +52,7 @@ for project_name in ${PROJECT_NAMES[*]}; do
         if [[ -n $(find . -name "Godeps.json") ]]; then
           godep go test -race $(go list ./... | grep -v /vendor/ | grep -v vertical-pod-autoscaler/e2e)
         else
-          go test -race $(go list ./... | grep -v /vendor/ | grep -v vertical-pod-autoscaler/e2e | grep -v cluster-autoscaler/apis)
+          go test k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller
         fi
         ;;
       *)
