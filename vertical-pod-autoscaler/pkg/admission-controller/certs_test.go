@@ -401,7 +401,7 @@ func TestAdrian(t *testing.T) {
 
 	certDir, err := ioutil.TempDir("", "adrian")
 	if err != nil {
-		fmt.Println("Failed to create a temp dir for cert generation %v", err)
+		fmt.Println("Failed to create a temp dir for cert generation", err)
 	}
 	defer os.RemoveAll(certDir)
 	fmt.Println("certDir", certDir)
