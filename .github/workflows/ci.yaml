@@ -32,7 +32,7 @@ jobs:
         working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler
         run: |
           cd ${{ env.GOPATH }}/src/k8s.io/autoscaler
-          go mod init
+          go get
           go test ./...
         env:
           GO111MODULE: auto
