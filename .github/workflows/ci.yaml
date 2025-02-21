@@ -32,6 +32,6 @@ jobs:
         working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler
         run: |
           cd ${{ env.GOPATH }}/src/k8s.io/autoscaler/vertical-pod-autoscaler/
-          go test -count=100 -run ^TestUnchangedCAReloader
+          go test -count=100 -run ^TestUnchangedCAReloader ./...
         env:
           GO111MODULE: auto
