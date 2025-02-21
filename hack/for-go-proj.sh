@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/bash -x
 
 # Copyright 2014 The Kubernetes Authors.
 #
@@ -67,6 +67,6 @@ if [ "${CMD}" = "build" ] || [ "${CMD}" == "test" ]; then
   go test -run=None ./...
   popd
   pushd ${CONTRIB_ROOT}/cluster-autoscaler/
-  go test k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller
+  go test ./...
   popd
 fi
