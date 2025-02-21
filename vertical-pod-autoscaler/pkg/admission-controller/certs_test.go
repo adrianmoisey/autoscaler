@@ -25,6 +25,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
+	"fmt"
+	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -391,4 +393,20 @@ func TestUnchangedCAReloader(t *testing.T) {
 	newWebhookCABundle := newWebhookConfig.Webhooks[0].ClientConfig.CABundle
 	newCAEncodedString := base64.StdEncoding.EncodeToString(newWebhookCABundle)
 	assert.Equal(t, oldCAEncodedString, newCAEncodedString, "expected CA to not change")
+}
+
+func TestAdrian(t *testing.T) {
+	tempDir := t.TempDir()
+	fmt.Println("tempDir", tempDir)
+
+	certDir, err := ioutil.TempDir("", "adrian")
+	if err != nil {
+		fmt.Println("Failed to create a temp dir for cert generation %v", err)
+	}
+	defer os.RemoveAll(certDir)
+	fmt.Println("certDir", certDir)
+
+	fmt.Println("TMPDIR:", os.Getenv("TMPDIR"))
+
+	assert.Equal(t, 0, 1)
 }
