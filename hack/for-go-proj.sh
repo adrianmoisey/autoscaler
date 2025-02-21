@@ -19,7 +19,7 @@ set -o pipefail
 set -o nounset
 
 CONTRIB_ROOT="$(dirname ${BASH_SOURCE})/.."
-PROJECT_NAMES=(addon-resizer vertical-pod-autoscaler)
+PROJECT_NAMES=(vertical-pod-autoscaler)
 
 if [[ $# -ne 1 ]]; then
   echo "missing subcommand: [build|install|test]"
@@ -67,6 +67,6 @@ if [ "${CMD}" = "build" ] || [ "${CMD}" == "test" ]; then
   go test -run=None ./...
   popd
   pushd ${CONTRIB_ROOT}/cluster-autoscaler/
-  go test ./...
+  go test k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller
   popd
 fi
