@@ -25,12 +25,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
-	"fmt"
 	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -395,18 +395,46 @@ func TestUnchangedCAReloader(t *testing.T) {
 	assert.Equal(t, oldCAEncodedString, newCAEncodedString, "expected CA to not change")
 }
 
-func TestAdrian(t *testing.T) {
-	tempDir := t.TempDir()
-	fmt.Println("tempDir", tempDir)
+// func TestAdrian(t *testing.T) {
+// 	tempDir := t.TempDir()
+// 	fmt.Println("tempDir", tempDir)
 
-	certDir, err := ioutil.TempDir("", "adrian")
-	if err != nil {
-		fmt.Println("Failed to create a temp dir for cert generation", err)
+// 	certDir, err := ioutil.TempDir("", "adrian")
+// 	if err != nil {
+// 		fmt.Println("Failed to create a temp dir for cert generation", err)
+// 	}
+// 	defer os.RemoveAll(certDir)
+// 	fmt.Println("certDir", certDir)
+
+// 	fmt.Println("TMPDIR:", os.Getenv("TMPDIR"))
+
+// 	assert.Equal(t, 0, 1)
+// }
+
+func TestTempDirLoop(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		// Create a temporary directory using t.TempDir()
+		tempDir := t.TempDir()
+
+		// Define file path
+		filePath := filepath.Join(tempDir, "testfile.txt")
+
+		// Write content to file
+		content := []byte("Hello, world!")
+		err := ioutil.WriteFile(filePath, content, 0644)
+		if err != nil {
+			t.Fatalf("Failed to write file: %v", err)
+		}
+
+		// Read content back
+		readContent, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			t.Fatalf("Failed to read file: %v", err)
+		}
+
+		// Verify content
+		if string(readContent) != string(content) {
+			t.Fatalf("Content mismatch")
+		}
 	}
-	defer os.RemoveAll(certDir)
-	fmt.Println("certDir", certDir)
-
-	fmt.Println("TMPDIR:", os.Getenv("TMPDIR"))
-
-	assert.Equal(t, 0, 1)
 }
