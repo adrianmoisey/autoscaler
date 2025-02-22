@@ -91,7 +91,9 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						if err != nil {
 							log.Fatalf("failed to read file: %v", err)
 						}
+						fmt.Println("BEFORE DEBUG")
 						fmt.Println(string(data))
+						fmt.Println("AFTER DEBUG")
 
 						klog.ErrorS(err, "Failed to reload certificate")
 					}
@@ -103,7 +105,9 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						if err != nil {
 							log.Fatalf("failed to read file: %v", err)
 						}
+						fmt.Println("BEFORE DEBUG")
 						fmt.Println(string(data))
+						fmt.Println("AFTER DEBUG")
 
 						klog.ErrorS(err, "Failed to reload certificate")
 					}
