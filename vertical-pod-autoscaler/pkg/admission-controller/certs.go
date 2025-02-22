@@ -91,9 +91,9 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						if err != nil {
 							log.Fatalf("failed to read file: %v", err)
 						}
-						fmt.Println("BEFORE DEBUG")
+						fmt.Println("BEFORE CERTIFICATE DEBUG")
 						fmt.Println(string(data))
-						fmt.Println("AFTER DEBUG")
+						fmt.Println("AFTER CERTIFICATE DEBUG")
 
 						klog.ErrorS(err, "Failed to reload certificate")
 					}
@@ -105,11 +105,11 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						if err != nil {
 							log.Fatalf("failed to read file: %v", err)
 						}
-						fmt.Println("BEFORE DEBUG")
+						fmt.Println("BEFORE KEY DEBUG")
 						fmt.Println(string(data))
-						fmt.Println("AFTER DEBUG")
+						fmt.Println("AFTER KEY DEBUG")
 
-						klog.ErrorS(err, "Failed to reload certificate")
+						klog.ErrorS(err, "Failed to reload KEY")
 					}
 
 				case cr.clientCaPath:
