@@ -86,6 +86,8 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 				case cr.tlsCertPath:
 					klog.V(2).InfoS("New certificate found, reloading")
 					if err := cr.load(); err != nil {
+						klog.ErrorS(err, "Failed to reload certificate")
+
 						// adrian
 						data, err := os.ReadFile(cr.tlsCertPath)
 						if err != nil {
@@ -95,11 +97,12 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						fmt.Println(string(data))
 						fmt.Println("AFTER CERTIFICATE DEBUG")
 
-						klog.ErrorS(err, "Failed to reload certificate")
 					}
 				case cr.tlsKeyPath:
 					klog.V(2).InfoS("New certificate found, reloading")
 					if err := cr.load(); err != nil {
+						klog.ErrorS(err, "Failed to reload KEY")
+
 						// adrian
 						data, err := os.ReadFile(cr.tlsKeyPath)
 						if err != nil {
@@ -109,7 +112,6 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 						fmt.Println(string(data))
 						fmt.Println("AFTER KEY DEBUG")
 
-						klog.ErrorS(err, "Failed to reload KEY")
 					}
 
 				case cr.clientCaPath:
