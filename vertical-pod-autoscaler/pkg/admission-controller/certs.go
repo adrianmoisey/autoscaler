@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 
@@ -82,11 +83,31 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 					continue
 				}
 				switch event.Name {
-				case cr.tlsCertPath, cr.tlsKeyPath:
+				case cr.tlsCertPath:
 					klog.V(2).InfoS("New certificate found, reloading")
 					if err := cr.load(); err != nil {
+						// adrian
+						data, err := os.ReadFile(cr.tlsCertPath)
+						if err != nil {
+							log.Fatalf("failed to read file: %v", err)
+						}
+						fmt.Println(string(data))
+
 						klog.ErrorS(err, "Failed to reload certificate")
 					}
+				case cr.tlsKeyPath:
+					klog.V(2).InfoS("New certificate found, reloading")
+					if err := cr.load(); err != nil {
+						// adrian
+						data, err := os.ReadFile(cr.tlsKeyPath)
+						if err != nil {
+							log.Fatalf("failed to read file: %v", err)
+						}
+						fmt.Println(string(data))
+
+						klog.ErrorS(err, "Failed to reload certificate")
+					}
+
 				case cr.clientCaPath:
 					if err := cr.reloadWebhookCA(); err != nil {
 						klog.ErrorS(err, "Failed to reload client CA")
