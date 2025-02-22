@@ -86,6 +86,7 @@ func generateCerts(t *testing.T, org string, caCert *x509.Certificate, caKey *rs
 
 func TestKeypairReloader(t *testing.T) {
 	tempDir := t.TempDir()
+	t.Log("tempDir", tempDir)
 	caCert := &x509.Certificate{
 		SerialNumber: big.NewInt(0),
 		Subject: pkix.Name{
@@ -163,6 +164,8 @@ func TestKeypairReloader(t *testing.T) {
 
 func TestChangedCAReloader(t *testing.T) {
 	tempDir := t.TempDir()
+	t.Log("tempDir", tempDir)
+
 	caCert := &x509.Certificate{
 		SerialNumber: big.NewInt(0),
 		Subject: pkix.Name{
@@ -280,6 +283,8 @@ func TestChangedCAReloader(t *testing.T) {
 
 func TestUnchangedCAReloader(t *testing.T) {
 	tempDir := t.TempDir()
+	t.Log("tempDir", tempDir)
+
 	caCert := &x509.Certificate{
 		SerialNumber: big.NewInt(0),
 		Subject: pkix.Name{
