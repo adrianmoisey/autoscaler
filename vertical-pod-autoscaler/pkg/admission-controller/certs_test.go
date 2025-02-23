@@ -31,6 +31,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -85,12 +86,18 @@ func generateCerts(t *testing.T, org string, caCert *x509.Certificate, caKey *rs
 }
 
 func TestKeypairReloader(t *testing.T) {
+	t.Log("Start TestKeypairReloader")
+
 	tempDir, err := os.MkdirTemp("", "TestKeypairReloader")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir) // Clean up after the test
-	t.Log("tempDir", tempDir)
+
+	t.Cleanup(func() {
+		t.Log("Removing tempdir")
+		os.RemoveAll(tempDir)
+	})
+	t.Log("tempDir Created", tempDir)
 	caCert := &x509.Certificate{
 		SerialNumber: big.NewInt(0),
 		Subject: pkix.Name{
@@ -103,19 +110,27 @@ func TestKeypairReloader(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 	}
+	t.Log("A")
+
 	caKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		t.Error(err)
 	}
+	t.Log("B")
+
 	caBytes, err := x509.CreateCertificate(rand.Reader, caCert, caCert, &caKey.PublicKey, caKey)
 	if err != nil {
 		t.Error(err)
 	}
+	t.Log("C")
+
 	caPath := path.Join(tempDir, "ca.crt")
 	caFile, err := os.Create(caPath)
 	if err != nil {
 		t.Error(err)
 	}
+	t.Log("D")
+
 	err = pem.Encode(caFile, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: caBytes,
@@ -123,6 +138,7 @@ func TestKeypairReloader(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	t.Log("E")
 
 	pub, privateKey := generateCerts(t, "first", caCert, caKey)
 	certPath := path.Join(tempDir, "cert.crt")
@@ -138,11 +154,17 @@ func TestKeypairReloader(t *testing.T) {
 		tlsCertPath: certPath,
 		tlsKeyPath:  keyPath,
 	}
+	t.Log("F")
+
 	stop := make(chan struct{})
-	defer close(stop)
-	if err = reloader.start(stop); err != nil {
+	// defer close(stop)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	if err = reloader.start(stop, &wg); err != nil {
 		t.Error(err)
 	}
+	t.Log("G")
 
 	pub, privateKey = generateCerts(t, "second", caCert, caKey)
 	if err = os.WriteFile(certPath, pub, 0666); err != nil {
@@ -151,27 +173,47 @@ func TestKeypairReloader(t *testing.T) {
 	if err = os.WriteFile(keyPath, privateKey, 0666); err != nil {
 		t.Error(err)
 	}
+	t.Log("H")
+
 	for {
+		t.Log("I")
+
 		tlsCert, err := reloader.getCertificate(nil)
 		if err != nil {
 			t.Error(err)
 		}
+		t.Log("J")
+
 		if tlsCert == nil {
 			continue
 		}
+		t.Log("K")
+
 		pubDER, _ := pem.Decode(pub)
 		if string(tlsCert.Certificate[0]) == string(pubDER.Bytes) {
-			return
+			close(stop)
+			break
 		}
+		t.Log("L")
+
 	}
+	t.Log("M")
+	// close(stop)
+	t.Log("N")
+	wg.Done()
 }
 
 func TestChangedCAReloader(t *testing.T) {
+	// t.Parallel()
+	t.Log("Start TestChangedCAReloader")
+
 	tempDir, err := os.MkdirTemp("", "TestChangedCAReloader")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir) // Clean up after the test
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
 	t.Log("tempDir", tempDir)
 
 	caCert := &x509.Certificate{
@@ -247,7 +289,10 @@ func TestChangedCAReloader(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	defer close(stop)
-	if err := reloader.start(stop); err != nil {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	if err := reloader.start(stop, &wg); err != nil {
 		t.Error(err)
 	}
 
@@ -287,6 +332,9 @@ func TestChangedCAReloader(t *testing.T) {
 	newWebhookCABundle := newWebhookConfig.Webhooks[0].ClientConfig.CABundle
 	newCAEncodedString := base64.StdEncoding.EncodeToString(newWebhookCABundle)
 	assert.NotEqual(t, oldCAEncodedString, newCAEncodedString, "expected CA to change")
+	t.Log("End TestChangedCAReloader")
+	wg.Done()
+
 }
 
 func TestUnchangedCAReloader(t *testing.T) {
@@ -317,6 +365,7 @@ func TestUnchangedCAReloader(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
 	caPath := path.Join(tempDir, "ca.crt")
 	caFile, err := os.Create(caPath)
 	if err != nil {
@@ -375,7 +424,11 @@ func TestUnchangedCAReloader(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	defer close(stop)
-	if err := reloader.start(stop); err != nil {
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	if err := reloader.start(stop, &wg); err != nil {
 		t.Error(err)
 	}
 
@@ -410,6 +463,8 @@ func TestUnchangedCAReloader(t *testing.T) {
 	newWebhookCABundle := newWebhookConfig.Webhooks[0].ClientConfig.CABundle
 	newCAEncodedString := base64.StdEncoding.EncodeToString(newWebhookCABundle)
 	assert.Equal(t, oldCAEncodedString, newCAEncodedString, "expected CA to not change")
+	wg.Wait()
+	<-stop
 }
 
 // func TestAdrian(t *testing.T) {

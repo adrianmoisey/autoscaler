@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	admissionregistration "k8s.io/api/admissionregistration/v1"
@@ -79,9 +80,13 @@ func configTLS(cfg certsConfig, minTlsVersion, ciphers string, stop <-chan struc
 		if err := cr.load(); err != nil {
 			klog.Fatal(err)
 		}
-		if err := cr.start(stop); err != nil {
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		if err := cr.start(stop, &wg); err != nil {
 			klog.Fatal(err)
 		}
+		wg.Done()
 		config.GetCertificate = cr.getCertificate
 	} else {
 		cert, err := tls.LoadX509KeyPair(*cfg.tlsCertFile, *cfg.tlsPrivateKey)

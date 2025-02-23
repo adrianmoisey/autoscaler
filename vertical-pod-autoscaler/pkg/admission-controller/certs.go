@@ -57,33 +57,49 @@ type certReloader struct {
 	mutatingWebhookClient admissionregistrationv1.MutatingWebhookConfigurationInterface
 }
 
-func (cr *certReloader) start(stop <-chan struct{}) error {
+func (cr *certReloader) start(stop <-chan struct{}, wg *sync.WaitGroup) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
 
-	if err = watcher.Add(cr.tlsCertPath); err != nil {
-		return err
+	fmt.Println("Watching", cr.tlsCertPath, cr.tlsKeyPath, cr.clientCaPath)
+
+	if cr.tlsCertPath != "" {
+		if err = watcher.Add(cr.tlsCertPath); err != nil {
+			return err
+		}
 	}
-	if err = watcher.Add(cr.tlsKeyPath); err != nil {
-		return err
+	if cr.tlsKeyPath != "" {
+		if err = watcher.Add(cr.tlsKeyPath); err != nil {
+			return err
+		}
 	}
-	if err = watcher.Add(cr.clientCaPath); err != nil {
-		return err
+	if cr.clientCaPath != "" {
+		if err = watcher.Add(cr.clientCaPath); err != nil {
+			return err
+		}
 	}
 
 	go func() {
 		defer watcher.Close()
 		for {
+			fmt.Println("In goroutine A")
 			select {
 			case event := <-watcher.Events:
+				fmt.Println("In goroutine event")
+
 				// we need to watch "Remove" events because Kubernetes uses symbolic links to point to ConfigMaps/Secrets volumes
 				if !event.Has(fsnotify.Remove) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Write) {
+
+					fmt.Println("In goroutine D", event.Op.String(), event.Name)
+
 					continue
 				}
 				switch event.Name {
 				case cr.tlsCertPath:
+					fmt.Println("In goroutine B")
+
 					klog.V(2).InfoS("New certificate found, reloading")
 					if err := cr.load(); err != nil {
 						klog.ErrorS(err, "Failed to reload certificate")
@@ -99,12 +115,21 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 
 					}
 				case cr.tlsKeyPath:
+					fmt.Println("In goroutine C")
+
 					klog.V(2).InfoS("New certificate found, reloading")
+					fmt.Println("In goroutine E")
+
 					if err := cr.load(); err != nil {
+						fmt.Println("In goroutine F")
+
 						klog.ErrorS(err, "Failed to reload KEY")
+						fmt.Println("In goroutine G")
 
 						// adrian
 						data, err := os.ReadFile(cr.tlsKeyPath)
+						fmt.Println("In goroutine H")
+
 						if err != nil {
 							log.Fatalf("failed to read file: %v", err)
 						}
@@ -128,8 +153,12 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 					}
 				}
 			case err := <-watcher.Errors:
+				fmt.Println("In goroutine watcher")
+
 				klog.Warningf("Error watching certificate files: %s", err)
 			case <-stop:
+				fmt.Println("Gorouting received shutdown")
+				wg.Done()
 				return
 			}
 		}
@@ -183,3 +212,30 @@ func (cr *certReloader) getCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate
 	defer cr.mu.RUnlock()
 	return cr.cert, nil
 }
+
+/*
+
+certs_test.go:175: I
+certs_test.go:181: J
+certs_test.go:175: I
+certs_test.go:181: J
+certs_test.go:175: I
+certs_test.go:181: J
+certs_test.go:175: I
+In goroutine A
+certs_test.go:181: J
+certs_test.go:186: K
+In goroutine event
+In goroutine D CHMOD         "/var/folders/65/291bxggd7ql85hzwmn2td2500000gn/T/TestKeypairReloader1263719920/cert.key" /var/folders/65/291bxggd7ql85hzwmn2td2500000gn/T/TestKeypairReloader1263719920/cert.key
+In goroutine A
+In goroutine event
+In goroutine C
+In goroutine E
+certs_test.go:196: M
+certs_test.go:198: N
+certs_test.go:96: Removing tempdir
+In goroutine A
+In goroutine event
+--- PASS: TestKeypairReloader (2.22s)
+
+*/
