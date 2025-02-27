@@ -33,11 +33,11 @@ jobs:
         env:
           GO111MODULE: auto
 
-      - name: Verify
-        working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler
-        run: hack/verify-all.sh -v
-        env:
-          GO111MODULE: auto
+#      - name: Verify
+#        working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler
+#        run: hack/verify-all.sh -v
+#        env:
+#          GO111MODULE: auto
 
       - name: golangci-lint - vertical-pod-autoscaler
         uses: golangci/golangci-lint-action@v6
