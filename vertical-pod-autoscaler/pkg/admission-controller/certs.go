@@ -83,7 +83,11 @@ func (cr *certReloader) start(stop <-chan struct{}) error {
 				}
 				switch event.Name {
 				case cr.tlsCertPath, cr.tlsKeyPath:
-					klog.V(2).InfoS("New certificate found, reloading")
+					if len(readFile(cr.tlsCertPath)) == 0 || len(readFile(cr.tlsKeyPath)) == 0 {
+						klog.V(2).InfoS("File is empty, skipping reload", "file", event.Name)
+						return
+					}
+					klog.V(2).InfoS("New certificate found, reloading", "file", event.Name)
 					if err := cr.load(); err != nil {
 						klog.ErrorS(err, "Failed to reload certificate")
 					}
