@@ -33,9 +33,9 @@ jobs:
         with:
           go-version: '1.22.2'
           cache-dependency-path: |
-             cluster-autoscaler/go.sum
-             vertical-pod-autoscaler/go.sum
-             vertical-pod-autoscaler/e2e/go.sum
+             ${{ env.GOPATH}}/src/k8s.io/autoscaler/cluster-autoscaler/go.sum
+             ${{ env.GOPATH}}/src/k8s.io/autoscaler/vertical-pod-autoscaler/go.sum
+             ${{ env.GOPATH}}/src/k8s.io/autoscaler/vertical-pod-autoscaler/e2e/go.sum
 
       - uses: actions/checkout@v4.2.2
         with:
