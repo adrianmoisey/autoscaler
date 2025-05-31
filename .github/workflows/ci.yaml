@@ -22,6 +22,12 @@ jobs:
       - name: debug
         run: ls; echo ${{ env.GOPATH}}/src/k8s.io/autoscaler
 
+      - name: debug
+        run: ls ${{ env.GOPATH}}/src/k8s.io/autoscaler
+
+      - name: debug
+        run: ls go/
+
       - name: Set up Go
         uses: actions/setup-go@v5.5.0
         with:
