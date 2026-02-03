@@ -192,7 +192,14 @@ func (u *updater) RunOnce(ctx context.Context) {
 	timer.ObserveStep("ListPods")
 	allLivePods := filterDeletedPods(podsList)
 
+	// Build reverse index for performance: O(pods × vpas) instead of O(pods) operations
 	controlledPods := make(map[*vpa_types.VerticalPodAutoscaler][]*apiv1.Pod)
+	// Pre-allocate with average pods per VPA estimate
+	avgPodsPerVpa := len(allLivePods) / max(len(vpas), 1)
+	for _, vpaWithSelector := range vpas {
+		controlledPods[vpaWithSelector.Vpa] = make([]*apiv1.Pod, 0, avgPodsPerVpa)
+	}
+	
 	for _, pod := range allLivePods {
 		controllingVPA := vpa_api_util.GetControllingVPAForPod(ctx, pod, vpas, u.controllerFetcher)
 		if controllingVPA != nil {

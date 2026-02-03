@@ -79,6 +79,8 @@ type clusterState struct {
 	// Map with all label sets used by the aggregations. It serves as a cache
 	// that allows to quickly access labels.Set corresponding to a labelSetKey.
 	labelSetMap labelSetMap
+	// Cache mapping pods to their controlling VPA for performance optimization.
+	podToVpaCache map[PodID]*Vpa
 
 	lastAggregateContainerStateGC time.Time
 	gcInterval                    time.Duration
@@ -129,6 +131,7 @@ func NewClusterState(gcInterval time.Duration) *clusterState {
 		emptyVPAs:                     make(map[VpaID]time.Time),
 		aggregateStateMap:             make(aggregateContainerStatesMap),
 		labelSetMap:                   make(labelSetMap),
+		podToVpaCache:                 make(map[PodID]*Vpa),
 		lastAggregateContainerStateGC: time.Unix(0, 0),
 		gcInterval:                    gcInterval,
 	}
@@ -157,6 +160,8 @@ func (cluster *clusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, p
 	if podExists && pod.labelSetKey != newlabelSetKey {
 		// This Pod is already counted in the old VPA, remove the link.
 		cluster.removePodFromItsVpa(pod)
+		// Invalidate cache entry when pod labels change
+		delete(cluster.podToVpaCache, podID)
 	}
 	if !podExists || pod.labelSetKey != newlabelSetKey {
 		pod.labelSetKey = newlabelSetKey
@@ -210,6 +215,8 @@ func (cluster *clusterState) DeletePod(podID PodID) {
 		cluster.removePodFromItsVpa(pod)
 	}
 	delete(cluster.pods, podID)
+	// Invalidate cache entry when pod is deleted
+	delete(cluster.podToVpaCache, podID)
 }
 
 // AddOrUpdateContainer creates a new container with the given ContainerID and
@@ -298,6 +305,8 @@ func (cluster *clusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)
 		}
 		vpa.PodCount = len(cluster.GetMatchingPods(vpa))
+		// Invalidate cache when VPA is added/updated since pod-to-VPA mapping may change
+		cluster.podToVpaCache = make(map[PodID]*Vpa)
 	}
 	vpa.TargetRef = apiObject.Spec.TargetRef
 	vpa.Annotations = annotationsMap
@@ -320,6 +329,8 @@ func (cluster *clusterState) DeleteVpa(vpaID VpaID) error {
 	}
 	delete(cluster.vpas, vpaID)
 	delete(cluster.emptyVPAs, vpaID)
+	// Invalidate cache when VPA is deleted since pod-to-VPA mapping may change
+	cluster.podToVpaCache = make(map[PodID]*Vpa)
 	return nil
 }
 
@@ -350,7 +361,10 @@ func newPod(id PodID) *PodState {
 // corresponding labelSetKey.
 func (cluster *clusterState) getLabelSetKey(labelSet labels.Set) labelSetKey {
 	labelSetKey := labelSetKey(labelSet.String())
-	cluster.labelSetMap[labelSetKey] = labelSet
+	// Only insert if not already present to avoid duplicate entries
+	if _, exists := cluster.labelSetMap[labelSetKey]; !exists {
+		cluster.labelSetMap[labelSetKey] = labelSet
+	}
 	return labelSetKey
 }
 
@@ -403,7 +417,8 @@ func (cluster *clusterState) findOrCreateAggregateContainerState(containerID Con
 // 3) There are no samples and the aggregate state was created >8 days ago.
 func (cluster *clusterState) garbageCollectAggregateCollectionStates(ctx context.Context, now time.Time, controllerFetcher controllerfetcher.ControllerFetcher) {
 	klog.V(1).InfoS("Garbage collection of AggregateCollectionStates triggered")
-	keysToDelete := make([]AggregateStateKey, 0)
+	// Pre-allocate with estimated capacity to reduce allocations during GC
+	keysToDelete := make([]AggregateStateKey, 0, len(cluster.aggregateStateMap)/10)
 	contributiveKeys := cluster.getContributiveAggregateStateKeys(ctx, controllerFetcher)
 	for key, aggregateContainerState := range cluster.aggregateStateMap {
 		isKeyContributive := contributiveKeys[key]
@@ -483,7 +498,8 @@ func (cluster *clusterState) RecordRecommendation(vpa *Vpa, now time.Time) error
 // GetMatchingPods returns a list of currently active pods that match the
 // given VPA. Traverses through all pods in the cluster - use sparingly.
 func (cluster *clusterState) GetMatchingPods(vpa *Vpa) []PodID {
-	matchingPods := []PodID{}
+	// Pre-allocate with estimated capacity to reduce allocations
+	matchingPods := make([]PodID, 0, len(cluster.pods)/len(cluster.vpas)+1)
 	for podID, pod := range cluster.pods {
 		if vpa_utils.PodLabelsMatchVPA(podID.Namespace, cluster.labelSetMap[pod.labelSetKey],
 			vpa.ID.Namespace, vpa.PodSelector) {
@@ -513,12 +529,22 @@ func (cluster *clusterState) GetControllerForPodUnderVPA(ctx context.Context, po
 
 // GetControllingVPA returns a VPA object controlling given Pod.
 func (cluster *clusterState) GetControllingVPA(pod *PodState) *Vpa {
+	// Check cache first for performance optimization
+	if cachedVpa, exists := cluster.podToVpaCache[pod.ID]; exists {
+		return cachedVpa
+	}
+	
+	// Cache miss - perform linear search
 	for _, vpa := range cluster.vpas {
 		if vpa_utils.PodLabelsMatchVPA(pod.ID.Namespace, cluster.labelSetMap[pod.labelSetKey],
 			vpa.ID.Namespace, vpa.PodSelector) {
+			// Update cache before returning
+			cluster.podToVpaCache[pod.ID] = vpa
 			return vpa
 		}
 	}
+	// Cache the nil result to avoid repeated lookups
+	cluster.podToVpaCache[pod.ID] = nil
 	return nil
 }
 
