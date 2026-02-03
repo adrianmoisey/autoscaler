@@ -547,7 +547,7 @@ func (cluster *clusterState) GetControllingVPA(pod *PodState) *Vpa {
 	if cachedVpa, exists := cluster.podToVpaCache[pod.ID]; exists {
 		return cachedVpa
 	}
-	
+
 	// Cache miss - perform linear search
 	for _, vpa := range cluster.vpas {
 		if vpa_utils.PodLabelsMatchVPA(pod.ID.Namespace, cluster.labelSetMap[pod.labelSetKey],

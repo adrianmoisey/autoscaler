@@ -200,7 +200,7 @@ func (u *updater) RunOnce(ctx context.Context) {
 	for _, vpaWithSelector := range vpas {
 		controlledPods[vpaWithSelector.Vpa] = make([]*apiv1.Pod, 0, avgPodsPerVpa)
 	}
-	
+
 	for _, pod := range allLivePods {
 		controllingVPA := vpa_api_util.GetControllingVPAForPod(ctx, pod, vpas, u.controllerFetcher)
 		if controllingVPA != nil {
