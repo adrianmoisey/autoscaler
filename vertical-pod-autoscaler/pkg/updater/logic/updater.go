@@ -192,7 +192,8 @@ func (u *updater) RunOnce(ctx context.Context) {
 	timer.ObserveStep("ListPods")
 	allLivePods := filterDeletedPods(podsList)
 
-	// Build reverse index for performance: O(pods × vpas) instead of O(pods) operations
+	// Pre-allocate pod slices for each VPA to reduce allocations during classification.
+	// This improves performance from O(pods) repeated append operations to O(1) amortized appends.
 	controlledPods := make(map[*vpa_types.VerticalPodAutoscaler][]*apiv1.Pod)
 	// Pre-allocate with average pods per VPA estimate
 	avgPodsPerVpa := len(allLivePods) / max(len(vpas), 1)

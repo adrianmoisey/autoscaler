@@ -305,8 +305,13 @@ func (cluster *clusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)
 		}
 		vpa.PodCount = len(cluster.GetMatchingPods(vpa))
-		// Invalidate cache when VPA is added/updated since pod-to-VPA mapping may change
-		cluster.podToVpaCache = make(map[PodID]*Vpa)
+		// Selectively invalidate cache entries in the same namespace
+		// to avoid clearing the entire cache on every VPA change
+		for podID := range cluster.podToVpaCache {
+			if podID.Namespace == vpaID.Namespace {
+				delete(cluster.podToVpaCache, podID)
+			}
+		}
 	}
 	vpa.TargetRef = apiObject.Spec.TargetRef
 	vpa.Annotations = annotationsMap
@@ -329,8 +334,13 @@ func (cluster *clusterState) DeleteVpa(vpaID VpaID) error {
 	}
 	delete(cluster.vpas, vpaID)
 	delete(cluster.emptyVPAs, vpaID)
-	// Invalidate cache when VPA is deleted since pod-to-VPA mapping may change
-	cluster.podToVpaCache = make(map[PodID]*Vpa)
+	// Selectively invalidate cache entries in the same namespace
+	// to avoid clearing the entire cache on every VPA change
+	for podID := range cluster.podToVpaCache {
+		if podID.Namespace == vpaID.Namespace {
+			delete(cluster.podToVpaCache, podID)
+		}
+	}
 	return nil
 }
 
@@ -499,7 +509,11 @@ func (cluster *clusterState) RecordRecommendation(vpa *Vpa, now time.Time) error
 // given VPA. Traverses through all pods in the cluster - use sparingly.
 func (cluster *clusterState) GetMatchingPods(vpa *Vpa) []PodID {
 	// Pre-allocate with estimated capacity to reduce allocations
-	matchingPods := make([]PodID, 0, len(cluster.pods)/len(cluster.vpas)+1)
+	vpaCount := len(cluster.vpas)
+	if vpaCount == 0 {
+		vpaCount = 1 // Avoid division by zero
+	}
+	matchingPods := make([]PodID, 0, len(cluster.pods)/vpaCount+1)
 	for podID, pod := range cluster.pods {
 		if vpa_utils.PodLabelsMatchVPA(podID.Namespace, cluster.labelSetMap[pod.labelSetKey],
 			vpa.ID.Namespace, vpa.PodSelector) {
@@ -543,8 +557,8 @@ func (cluster *clusterState) GetControllingVPA(pod *PodState) *Vpa {
 			return vpa
 		}
 	}
-	// Cache the nil result to avoid repeated lookups
-	cluster.podToVpaCache[pod.ID] = nil
+	// Don't cache nil results to avoid unbounded cache growth
+	// for pods that don't match any VPA
 	return nil
 }
 
