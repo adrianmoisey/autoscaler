@@ -323,13 +323,13 @@ func (cluster *clusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)
 		}
 		vpa.PodCount = len(cluster.GetMatchingPods(vpa))
-		// Use namespace index for efficient cache invalidation
-		// Instead of scanning all pods, just invalidate the affected namespace
+		// Efficient namespace-scoped cache invalidation
+		// Simply remove the namespace mapping - pod cache entries will be lazily updated
 		if nsMap, exists := cluster.podToVpaCacheByNamespace[vpaID.Namespace]; exists {
+			// Invalidate all pod cache entries in this namespace
 			for podID := range nsMap {
 				delete(cluster.podToVpaCache, podID)
 			}
-			// Clear the namespace map since all entries were invalidated
 			delete(cluster.podToVpaCacheByNamespace, vpaID.Namespace)
 		}
 	}

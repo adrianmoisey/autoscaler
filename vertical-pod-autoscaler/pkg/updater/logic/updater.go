@@ -257,8 +257,9 @@ func (u *updater) RunOnce(ctx context.Context) {
 		evictionLimiter := u.restrictionFactory.NewPodsEvictionRestriction(creatorToSingleGroupStatsMap, podToReplicaCreatorMap)
 		inPlaceLimiter := u.restrictionFactory.NewPodsInPlaceRestriction(creatorToSingleGroupStatsMap, podToReplicaCreatorMap)
 
-		podsForInPlace := make([]*apiv1.Pod, 0)
-		podsForEviction := make([]*apiv1.Pod, 0)
+		// Pre-allocate with estimate based on pod count
+		podsForInPlace := make([]*apiv1.Pod, 0, len(livePods))
+		podsForEviction := make([]*apiv1.Pod, 0, len(livePods))
 		updateMode := vpa_api_util.GetUpdateMode(vpa)
 
 		if updateMode == vpa_types.UpdateModeInPlaceOrRecreate && features.Enabled(features.InPlaceOrRecreate) {
@@ -370,7 +371,8 @@ func (u *updater) getPodsUpdateOrder(pods []*apiv1.Pod, vpa *vpa_types.VerticalP
 }
 
 func filterPods(pods []*apiv1.Pod, predicate func(*apiv1.Pod) bool) []*apiv1.Pod {
-	result := make([]*apiv1.Pod, 0)
+	// Pre-allocate with max capacity to avoid reallocation during append
+	result := make([]*apiv1.Pod, 0, len(pods))
 	for _, pod := range pods {
 		if predicate(pod) {
 			result = append(result, pod)
