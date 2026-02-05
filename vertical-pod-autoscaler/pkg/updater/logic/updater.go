@@ -91,6 +91,8 @@ func NewUpdater(
 	namespace string,
 	ignoredNamespaces []string,
 	patchCalculators []patch.Calculator,
+	inPlaceDeferredTimeout time.Duration,
+	inPlaceInProgressTimeout time.Duration,
 ) (Updater, error) {
 	evictionRateLimiter := getRateLimiter(evictionRateLimit, evictionRateBurst)
 	// TODO: Create in-place rate limits for the in-place rate limiter
@@ -100,6 +102,8 @@ func NewUpdater(
 		minReplicasForEviction,
 		evictionToleranceFraction,
 		patchCalculators,
+		inPlaceDeferredTimeout,
+		inPlaceInProgressTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create restriction factory: %v", err)

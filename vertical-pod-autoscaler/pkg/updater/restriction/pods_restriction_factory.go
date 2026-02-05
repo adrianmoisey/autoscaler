@@ -74,10 +74,12 @@ type PodsRestrictionFactoryImpl struct {
 	clock                     clock.Clock
 	lastInPlaceAttemptTimeMap map[string]time.Time
 	patchCalculators          []patch.Calculator
+	inPlaceDeferredTimeout    time.Duration
+	inPlaceInProgressTimeout  time.Duration
 }
 
 // NewPodsRestrictionFactory creates a new PodsRestrictionFactory.
-func NewPodsRestrictionFactory(client kube_client.Interface, minReplicas int, evictionToleranceFraction float64, patchCalculators []patch.Calculator) (PodsRestrictionFactory, error) {
+func NewPodsRestrictionFactory(client kube_client.Interface, minReplicas int, evictionToleranceFraction float64, patchCalculators []patch.Calculator, inPlaceDeferredTimeout, inPlaceInProgressTimeout time.Duration) (PodsRestrictionFactory, error) {
 	rcInformer, err := setupInformer(client, replicationController)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rcInformer: %v", err)
@@ -105,6 +107,8 @@ func NewPodsRestrictionFactory(client kube_client.Interface, minReplicas int, ev
 		clock:                     &clock.RealClock{},
 		lastInPlaceAttemptTimeMap: make(map[string]time.Time),
 		patchCalculators:          patchCalculators,
+		inPlaceDeferredTimeout:    inPlaceDeferredTimeout,
+		inPlaceInProgressTimeout:  inPlaceInProgressTimeout,
 	}, nil
 }
 
@@ -253,6 +257,8 @@ func (f *PodsRestrictionFactoryImpl) NewPodsEvictionRestriction(creatorToSingleG
 		creatorToSingleGroupStatsMap: creatorToSingleGroupStatsMap,
 		clock:                        f.clock,
 		lastInPlaceAttemptTimeMap:    f.lastInPlaceAttemptTimeMap,
+		inPlaceDeferredTimeout:       f.inPlaceDeferredTimeout,
+		inPlaceInProgressTimeout:     f.inPlaceInProgressTimeout,
 	}
 }
 
@@ -265,6 +271,8 @@ func (f *PodsRestrictionFactoryImpl) NewPodsInPlaceRestriction(creatorToSingleGr
 		clock:                        f.clock,
 		lastInPlaceAttemptTimeMap:    f.lastInPlaceAttemptTimeMap,
 		patchCalculators:             f.patchCalculators,
+		inPlaceDeferredTimeout:       f.inPlaceDeferredTimeout,
+		inPlaceInProgressTimeout:     f.inPlaceInProgressTimeout,
 	}
 }
 

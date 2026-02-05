@@ -148,6 +148,16 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
+	// Validate flag ranges
+	if *oomBumpUpRatio <= 0 {
+		klog.ErrorS(nil, "Invalid oom-bump-up-ratio: must be > 0", "value", *oomBumpUpRatio)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+	if *oomMinBumpUp < 0 {
+		klog.ErrorS(nil, "Invalid oom-min-bump-up-bytes: must be >= 0", "value", *oomMinBumpUp)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
 	if *routines.MinCheckpointsPerRun != 10 { // Default value is 10
 		klog.InfoS("DEPRECATION WARNING: The 'min-checkpoints' flag is deprecated and has no effect. It will be removed in a future release.")
 	}
