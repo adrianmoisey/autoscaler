@@ -378,7 +378,8 @@ func selectsRecommender(selectors []*vpa_types.VerticalPodAutoscalerRecommenderS
 // Filter VPA objects whose specified recommender names are not default
 func filterVPAs(feeder *clusterStateFeeder, allVpaCRDs []*vpa_types.VerticalPodAutoscaler) []*vpa_types.VerticalPodAutoscaler {
 	klog.V(3).InfoS("Start selecting the vpaCRDs.")
-	var vpaCRDs []*vpa_types.VerticalPodAutoscaler
+	// Pre-allocate with full capacity - worst case all VPAs pass filter
+	vpaCRDs := make([]*vpa_types.VerticalPodAutoscaler, 0, len(allVpaCRDs))
 	for _, vpaCRD := range allVpaCRDs {
 		if feeder.recommenderName == DefaultRecommenderName {
 			if !implicitDefaultRecommender(vpaCRD.Spec.Recommenders) && !selectsRecommender(vpaCRD.Spec.Recommenders, &feeder.recommenderName) {
@@ -482,9 +483,7 @@ func (feeder *clusterStateFeeder) LoadPods() {
 			}
 		}
 		for _, initContainer := range pod.InitContainers {
-			podInitContainers := feeder.clusterState.Pods()[pod.ID].InitContainers
-			feeder.clusterState.Pods()[pod.ID].InitContainers = append(podInitContainers, initContainer.ID.ContainerName)
-
+			feeder.clusterState.Pods()[pod.ID].AddInitContainer(initContainer.ID.ContainerName)
 		}
 	}
 }
@@ -500,7 +499,7 @@ func (feeder *clusterStateFeeder) LoadRealTimeMetrics(ctx context.Context) {
 	for _, containerMetrics := range containersMetrics {
 		// Container metrics are fetched for all pods, however, not all pod states are tracked in memory saver mode.
 		if pod, exists := feeder.clusterState.Pods()[containerMetrics.ID.PodID]; exists && pod != nil {
-			if slices.Contains(pod.InitContainers, containerMetrics.ID.ContainerName) {
+			if pod.IsInitContainer(containerMetrics.ID.ContainerName) {
 				klog.V(3).InfoS("Skipping metric samples for init container", "pod", klog.KRef(containerMetrics.ID.Namespace, containerMetrics.ID.PodName), "container", containerMetrics.ID.ContainerName)
 				droppedSampleCount += len(containerMetrics.Usage)
 				continue
@@ -546,7 +545,8 @@ func (feeder *clusterStateFeeder) matchesVPA(pod *spec.BasicPodSpec) bool {
 }
 
 func newContainerUsageSamplesWithKey(metrics *metrics.ContainerMetricsSnapshot) []*model.ContainerUsageSampleWithKey {
-	var samples []*model.ContainerUsageSampleWithKey
+	// Pre-allocate slice with exact capacity (typically 2 items: CPU and Memory)
+	samples := make([]*model.ContainerUsageSampleWithKey, 0, len(metrics.Usage))
 
 	for metricName, resourceAmount := range metrics.Usage {
 		sample := &model.ContainerUsageSampleWithKey{

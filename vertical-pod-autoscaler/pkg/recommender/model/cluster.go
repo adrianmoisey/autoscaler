@@ -122,6 +122,8 @@ type PodState struct {
 	Containers map[string]*ContainerState
 	// InitContainers is a list of init containers names which belong to the Pod.
 	InitContainers []string
+	// InitContainersSet is a set of init container names for O(1) lookup.
+	initContainersSet map[string]bool
 	// PodPhase describing current life cycle phase of the Pod.
 	Phase apiv1.PodPhase
 }
@@ -382,9 +384,30 @@ func (cluster *clusterState) ObservedVPAs() []*vpa_types.VerticalPodAutoscaler {
 
 func newPod(id PodID) *PodState {
 	return &PodState{
-		ID:         id,
-		Containers: make(map[string]*ContainerState),
+		ID:                id,
+		Containers:        make(map[string]*ContainerState),
+		initContainersSet: make(map[string]bool),
 	}
+}
+
+// IsInitContainer returns true if the given container name is an init container.
+func (pod *PodState) IsInitContainer(containerName string) bool {
+	// If initContainersSet is nil (e.g., in tests), fall back to slice search
+	if pod.initContainersSet == nil {
+		for _, name := range pod.InitContainers {
+			if name == containerName {
+				return true
+			}
+		}
+		return false
+	}
+	return pod.initContainersSet[containerName]
+}
+
+// AddInitContainer adds an init container name to the pod.
+func (pod *PodState) AddInitContainer(containerName string) {
+	pod.InitContainers = append(pod.InitContainers, containerName)
+	pod.initContainersSet[containerName] = true
 }
 
 // getLabelSetKey puts the given labelSet in the global labelSet map and returns a

@@ -19,7 +19,6 @@ package logic
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -71,7 +70,7 @@ type updater struct {
 	useAdmissionControllerStatus bool
 	statusValidator              status.Validator
 	controllerFetcher            controllerfetcher.ControllerFetcher
-	ignoredNamespaces            []string
+	ignoredNamespaces            map[string]bool
 }
 
 // NewUpdater creates Updater with given configuration
@@ -106,6 +105,12 @@ func NewUpdater(
 		return nil, fmt.Errorf("failed to create restriction factory: %v", err)
 	}
 
+	// Convert ignoredNamespaces slice to map for O(1) lookup
+	ignoredNamespacesMap := make(map[string]bool, len(ignoredNamespaces))
+	for _, ns := range ignoredNamespaces {
+		ignoredNamespacesMap[ns] = true
+	}
+
 	return &updater{
 		vpaLister:                    vpa_api_util.NewVpasLister(vpaClient, make(chan struct{}), namespace),
 		podLister:                    newPodLister(kubeClient, namespace),
@@ -124,7 +129,7 @@ func NewUpdater(
 			status.AdmissionControllerStatusName,
 			statusNamespace,
 		),
-		ignoredNamespaces: ignoredNamespaces,
+		ignoredNamespaces: ignoredNamespacesMap,
 	}, nil
 }
 
@@ -152,10 +157,10 @@ func (u *updater) RunOnce(ctx context.Context) {
 	}
 	timer.ObserveStep("ListVPAs")
 
-	vpas := make([]*vpa_api_util.VpaWithSelector, 0)
+	vpas := make([]*vpa_api_util.VpaWithSelector, 0, len(vpaList))
 
 	for _, vpa := range vpaList {
-		if slices.Contains(u.ignoredNamespaces, vpa.Namespace) {
+		if u.ignoredNamespaces[vpa.Namespace] {
 			klog.V(3).InfoS("Skipping VPA object in ignored namespace", "vpa", klog.KObj(vpa), "namespace", vpa.Namespace)
 			continue
 		}
