@@ -425,7 +425,7 @@ func TestRunOnceIgnoreNamespaceMatchingPods(t *testing.T) {
 		controllerFetcher:            controllerfetcher.FakeControllerFetcher{},
 		useAdmissionControllerStatus: true,
 		priorityProcessor:            priority.NewProcessor(),
-		ignoredNamespaces:            []string{"not-default"},
+		ignoredNamespaces:            map[string]bool{"not-default": true},
 		statusValidator:              newFakeValidator(true),
 	}
 
@@ -444,7 +444,7 @@ func TestRunOnceIgnoreNamespaceMatching(t *testing.T) {
 
 	updater := &updater{
 		vpaLister:         vpaLister,
-		ignoredNamespaces: []string{"default"},
+		ignoredNamespaces: map[string]bool{"default": true},
 	}
 
 	updater.RunOnce(context.Background())

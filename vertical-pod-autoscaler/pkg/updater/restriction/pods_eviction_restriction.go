@@ -50,6 +50,8 @@ type PodsEvictionRestrictionImpl struct {
 	creatorToSingleGroupStatsMap map[podReplicaCreator]singleGroupStats
 	clock                        clock.Clock
 	lastInPlaceAttemptTimeMap    map[string]time.Time
+	inPlaceDeferredTimeout       time.Duration
+	inPlaceInProgressTimeout     time.Duration
 }
 
 // CanEvict checks if pod can be safely evicted
@@ -62,7 +64,7 @@ func (e *PodsEvictionRestrictionImpl) CanEvict(pod *apiv1.Pod) bool {
 		}
 		if present {
 			if isInPlaceUpdating(pod) {
-				return CanEvictInPlacingPod(pod, singleGroupStats, e.lastInPlaceAttemptTimeMap, e.clock)
+				return CanEvictInPlacingPod(pod, singleGroupStats, e.lastInPlaceAttemptTimeMap, e.clock, e.inPlaceDeferredTimeout, e.inPlaceInProgressTimeout)
 			}
 			return singleGroupStats.isPodDisruptable()
 		}

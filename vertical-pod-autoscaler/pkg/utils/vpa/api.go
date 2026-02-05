@@ -242,6 +242,12 @@ func GetContainerControlledValues(name string, vpaResourcePolicy *vpa_types.PodR
 // If object doesn't exits it is created.
 func CreateOrUpdateVpaCheckpoint(vpaCheckpointClient vpa_api.VerticalPodAutoscalerCheckpointInterface,
 	vpaCheckpoint *vpa_types.VerticalPodAutoscalerCheckpoint) error {
+	return CreateOrUpdateVpaCheckpointWithContext(context.TODO(), vpaCheckpointClient, vpaCheckpoint)
+}
+
+// CreateOrUpdateVpaCheckpointWithContext creates or updates VPA checkpoint with context support for retry logic
+func CreateOrUpdateVpaCheckpointWithContext(ctx context.Context, vpaCheckpointClient vpa_api.VerticalPodAutoscalerCheckpointInterface,
+	vpaCheckpoint *vpa_types.VerticalPodAutoscalerCheckpoint) error {
 	patches := make([]patchRecord, 0)
 	patches = append(patches, patchRecord{
 		Op:    "replace",
@@ -252,9 +258,9 @@ func CreateOrUpdateVpaCheckpoint(vpaCheckpointClient vpa_api.VerticalPodAutoscal
 	if err != nil {
 		return fmt.Errorf("cannot marshal VPA checkpoint status patches %+v. Reason: %+v", patches, err)
 	}
-	_, err = vpaCheckpointClient.Patch(context.TODO(), vpaCheckpoint.Name, types.JSONPatchType, bytes, meta.PatchOptions{})
+	_, err = vpaCheckpointClient.Patch(ctx, vpaCheckpoint.Name, types.JSONPatchType, bytes, meta.PatchOptions{})
 	if err != nil && strings.Contains(err.Error(), fmt.Sprintf("\"%s\" not found", vpaCheckpoint.Name)) {
-		_, err = vpaCheckpointClient.Create(context.TODO(), vpaCheckpoint, meta.CreateOptions{})
+		_, err = vpaCheckpointClient.Create(ctx, vpaCheckpoint, meta.CreateOptions{})
 	}
 	if err != nil {
 		return fmt.Errorf("cannot save checkpoint for vpa %s/%s container %s. Reason: %+v", vpaCheckpoint.Namespace, vpaCheckpoint.Name, vpaCheckpoint.Spec.ContainerName, err)

@@ -183,15 +183,18 @@ func (h *histogram) IsEmpty() bool {
 }
 
 func (h *histogram) String() string {
-	lines := []string{
-		fmt.Sprintf("minBucket: %d, maxBucket: %d, totalWeight: %.3f",
-			h.minBucket, h.maxBucket, h.totalWeight),
-		"%-tile\tvalue",
-	}
+	// Use strings.Builder for efficient string concatenation
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("minBucket: %d, maxBucket: %d, totalWeight: %.3f\n",
+		h.minBucket, h.maxBucket, h.totalWeight))
+	builder.WriteString("%-tile\tvalue\n")
+	
 	for i := 0; i <= 100; i += 5 {
-		lines = append(lines, fmt.Sprintf("%d\t%.3f", i, h.Percentile(0.01*float64(i))))
+		builder.WriteString(fmt.Sprintf("%d\t%.3f\n", i, h.Percentile(0.01*float64(i))))
 	}
-	return strings.Join(lines, "\n")
+	// Remove trailing newline
+	result := builder.String()
+	return result[:len(result)-1]
 }
 
 func (h *histogram) Equals(other Histogram) bool {

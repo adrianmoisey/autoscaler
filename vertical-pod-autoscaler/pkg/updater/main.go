@@ -75,6 +75,12 @@ var (
 	useAdmissionControllerStatus = flag.Bool("use-admission-controller-status", true,
 		"If true, updater will only evict pods when admission controller status is valid.")
 
+	inPlaceDeferredTimeout = flag.Duration("in-place-deferred-timeout", 5*time.Minute,
+		`Maximum duration to wait for a deferred in-place resize before falling back to eviction`)
+
+	inPlaceInProgressTimeout = flag.Duration("in-place-inprogress-timeout", 1*time.Hour,
+		`Maximum duration to wait for an in-progress in-place resize before falling back to eviction`)
+
 	namespace = os.Getenv("NAMESPACE")
 )
 
@@ -100,6 +106,16 @@ func main() {
 
 	if len(commonFlags.VpaObjectNamespace) > 0 && len(commonFlags.IgnoredVpaObjectNamespaces) > 0 {
 		klog.ErrorS(nil, "--vpa-object-namespace and --ignored-vpa-object-namespaces are mutually exclusive and can't be set together.")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
+	// Validate flag ranges
+	if *evictionToleranceFraction < 0 || *evictionToleranceFraction > 1 {
+		klog.ErrorS(nil, "Invalid eviction-tolerance: must be between 0 and 1", "value", *evictionToleranceFraction)
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+	if *minReplicas < 0 {
+		klog.ErrorS(nil, "Invalid min-replicas: must be >= 0", "value", *minReplicas)
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
@@ -226,6 +242,8 @@ func run(healthCheck *metrics.HealthCheck, commonFlag *common.CommonFlags) {
 		commonFlag.VpaObjectNamespace,
 		ignoredNamespaces,
 		calculators,
+		*inPlaceDeferredTimeout,
+		*inPlaceInProgressTimeout,
 	)
 	if err != nil {
 		klog.ErrorS(err, "Failed to create updater")

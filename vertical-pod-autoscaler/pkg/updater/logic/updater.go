@@ -19,7 +19,6 @@ package logic
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -71,7 +70,7 @@ type updater struct {
 	useAdmissionControllerStatus bool
 	statusValidator              status.Validator
 	controllerFetcher            controllerfetcher.ControllerFetcher
-	ignoredNamespaces            []string
+	ignoredNamespaces            map[string]bool
 }
 
 // NewUpdater creates Updater with given configuration
@@ -92,6 +91,8 @@ func NewUpdater(
 	namespace string,
 	ignoredNamespaces []string,
 	patchCalculators []patch.Calculator,
+	inPlaceDeferredTimeout time.Duration,
+	inPlaceInProgressTimeout time.Duration,
 ) (Updater, error) {
 	evictionRateLimiter := getRateLimiter(evictionRateLimit, evictionRateBurst)
 	// TODO: Create in-place rate limits for the in-place rate limiter
@@ -101,9 +102,17 @@ func NewUpdater(
 		minReplicasForEviction,
 		evictionToleranceFraction,
 		patchCalculators,
+		inPlaceDeferredTimeout,
+		inPlaceInProgressTimeout,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create restriction factory: %v", err)
+	}
+
+	// Convert ignoredNamespaces slice to map for O(1) lookup
+	ignoredNamespacesMap := make(map[string]bool, len(ignoredNamespaces))
+	for _, ns := range ignoredNamespaces {
+		ignoredNamespacesMap[ns] = true
 	}
 
 	return &updater{
@@ -124,7 +133,7 @@ func NewUpdater(
 			status.AdmissionControllerStatusName,
 			statusNamespace,
 		),
-		ignoredNamespaces: ignoredNamespaces,
+		ignoredNamespaces: ignoredNamespacesMap,
 	}, nil
 }
 
@@ -152,10 +161,10 @@ func (u *updater) RunOnce(ctx context.Context) {
 	}
 	timer.ObserveStep("ListVPAs")
 
-	vpas := make([]*vpa_api_util.VpaWithSelector, 0)
+	vpas := make([]*vpa_api_util.VpaWithSelector, 0, len(vpaList))
 
 	for _, vpa := range vpaList {
-		if slices.Contains(u.ignoredNamespaces, vpa.Namespace) {
+		if u.ignoredNamespaces[vpa.Namespace] {
 			klog.V(3).InfoS("Skipping VPA object in ignored namespace", "vpa", klog.KObj(vpa), "namespace", vpa.Namespace)
 			continue
 		}
@@ -190,9 +199,19 @@ func (u *updater) RunOnce(ctx context.Context) {
 		return
 	}
 	timer.ObserveStep("ListPods")
-	allLivePods := filterDeletedPods(podsList)
+	// Pods with DeletionTimestamp are now filtered at the cache level via transform function
+	// in newPodLister, so podsList already contains only live pods
+	allLivePods := podsList
 
+	// Pre-allocate pod slices for each VPA to reduce allocations during classification.
+	// This improves performance from O(pods) repeated append operations to O(1) amortized appends.
 	controlledPods := make(map[*vpa_types.VerticalPodAutoscaler][]*apiv1.Pod)
+	// Pre-allocate with average pods per VPA estimate
+	avgPodsPerVpa := len(allLivePods) / max(len(vpas), 1)
+	for _, vpaWithSelector := range vpas {
+		controlledPods[vpaWithSelector.Vpa] = make([]*apiv1.Pod, 0, avgPodsPerVpa)
+	}
+
 	for _, pod := range allLivePods {
 		controllingVPA := vpa_api_util.GetControllingVPAForPod(ctx, pod, vpas, u.controllerFetcher)
 		if controllingVPA != nil {
@@ -240,8 +259,9 @@ func (u *updater) RunOnce(ctx context.Context) {
 		evictionLimiter := u.restrictionFactory.NewPodsEvictionRestriction(creatorToSingleGroupStatsMap, podToReplicaCreatorMap)
 		inPlaceLimiter := u.restrictionFactory.NewPodsInPlaceRestriction(creatorToSingleGroupStatsMap, podToReplicaCreatorMap)
 
-		podsForInPlace := make([]*apiv1.Pod, 0)
-		podsForEviction := make([]*apiv1.Pod, 0)
+		// Pre-allocate with estimate based on pod count
+		podsForInPlace := make([]*apiv1.Pod, 0, len(livePods))
+		podsForEviction := make([]*apiv1.Pod, 0, len(livePods))
 		updateMode := vpa_api_util.GetUpdateMode(vpa)
 
 		if updateMode == vpa_types.UpdateModeInPlaceOrRecreate && features.Enabled(features.InPlaceOrRecreate) {
@@ -353,7 +373,8 @@ func (u *updater) getPodsUpdateOrder(pods []*apiv1.Pod, vpa *vpa_types.VerticalP
 }
 
 func filterPods(pods []*apiv1.Pod, predicate func(*apiv1.Pod) bool) []*apiv1.Pod {
-	result := make([]*apiv1.Pod, 0)
+	// Pre-allocate with max capacity to avoid reallocation during append
+	result := make([]*apiv1.Pod, 0, len(pods))
 	for _, pod := range pods {
 		if predicate(pod) {
 			result = append(result, pod)
@@ -372,21 +393,54 @@ func filterNonEvictablePods(pods []*apiv1.Pod, evictionRestriction restriction.P
 	return filterPods(pods, evictionRestriction.CanEvict)
 }
 
-func filterDeletedPods(pods []*apiv1.Pod) []*apiv1.Pod {
-	return filterPods(pods, func(pod *apiv1.Pod) bool {
-		return pod.DeletionTimestamp == nil
-	})
+// shouldExcludePod returns true if a pod should be excluded from the cache.
+// Pods are excluded if they are terminating (have DeletionTimestamp set) or
+// have no assigned node (though field selector should already filter these).
+func shouldExcludePod(pod *apiv1.Pod) bool {
+	// Exclude terminating pods - these are being deleted
+	if pod.DeletionTimestamp != nil {
+		return true
+	}
+	// Exclude pods without nodes as a safety check (field selector should handle this)
+	if pod.Spec.NodeName == "" {
+		return true
+	}
+	return false
 }
 
 func newPodLister(kubeClient kube_client.Interface, namespace string) v1lister.PodLister {
 	selector := fields.ParseSelectorOrDie("spec.nodeName!=" + "" + ",status.phase!=" +
 		string(apiv1.PodSucceeded) + ",status.phase!=" + string(apiv1.PodFailed))
 	podListWatch := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "pods", namespace, selector)
-	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-	podLister := v1lister.NewPodLister(store)
-	podReflector := cache.NewReflector(podListWatch, &apiv1.Pod{}, store, time.Hour)
+	
+	// Transform function to filter pods at cache level
+	// This prevents storing unwanted pods in cache, reducing memory usage and list operation overhead
+	transformFunc := func(obj interface{}) (interface{}, error) {
+		pod, ok := obj.(*apiv1.Pod)
+		if !ok {
+			return obj, nil
+		}
+		// Filter out pods using our exclusion criteria
+		if shouldExcludePod(pod) {
+			return nil, nil
+		}
+		return obj, nil
+	}
+	
+	// Use NewInformerWithOptions to support transform function
+	informerOptions := cache.InformerOptions{
+		ListerWatcher: podListWatch,
+		ObjectType:    &apiv1.Pod{},
+		ResyncPeriod:  time.Hour,
+		Indexers:      cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		Transform:     transformFunc,
+	}
+	
+	store, controller := cache.NewInformerWithOptions(informerOptions)
+	podLister := v1lister.NewPodLister(store.(cache.Indexer))
+	
 	stopCh := make(chan struct{})
-	go podReflector.Run(stopCh)
+	go controller.Run(stopCh)
 
 	return podLister
 }

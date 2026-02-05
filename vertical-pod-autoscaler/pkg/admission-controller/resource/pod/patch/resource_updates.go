@@ -63,7 +63,8 @@ func (c *resourcesUpdatesPatchCalculator) CalculatePatches(pod *core.Pod, vpa *v
 		annotationsPerContainer = vpa_api_util.ContainerToAnnotationsMap{}
 	}
 
-	updatesAnnotation := []string{}
+	// Pre-allocate slice with exact capacity for container count
+	updatesAnnotation := make([]string, 0, len(containersResources))
 	for i, containerResources := range containersResources {
 		newPatches, newUpdatesAnnotation := getContainerPatch(pod, i, annotationsPerContainer, containerResources)
 		result = append(result, newPatches...)

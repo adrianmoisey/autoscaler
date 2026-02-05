@@ -79,6 +79,11 @@ type clusterState struct {
 	// Map with all label sets used by the aggregations. It serves as a cache
 	// that allows to quickly access labels.Set corresponding to a labelSetKey.
 	labelSetMap labelSetMap
+	// Cache mapping pods to their controlling VPA for performance optimization.
+	podToVpaCache map[PodID]*Vpa
+	// Namespace-indexed cache for efficient invalidation by namespace.
+	// Maps namespace -> pod IDs in that namespace for O(k) invalidation.
+	podToVpaCacheByNamespace map[string]map[PodID]bool
 
 	lastAggregateContainerStateGC time.Time
 	gcInterval                    time.Duration
@@ -117,6 +122,8 @@ type PodState struct {
 	Containers map[string]*ContainerState
 	// InitContainers is a list of init containers names which belong to the Pod.
 	InitContainers []string
+	// InitContainersSet is a set of init container names for O(1) lookup.
+	initContainersSet map[string]bool
 	// PodPhase describing current life cycle phase of the Pod.
 	Phase apiv1.PodPhase
 }
@@ -129,6 +136,8 @@ func NewClusterState(gcInterval time.Duration) *clusterState {
 		emptyVPAs:                     make(map[VpaID]time.Time),
 		aggregateStateMap:             make(aggregateContainerStatesMap),
 		labelSetMap:                   make(labelSetMap),
+		podToVpaCache:                 make(map[PodID]*Vpa),
+		podToVpaCacheByNamespace:      make(map[string]map[PodID]bool),
 		lastAggregateContainerStateGC: time.Unix(0, 0),
 		gcInterval:                    gcInterval,
 	}
@@ -157,6 +166,12 @@ func (cluster *clusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, p
 	if podExists && pod.labelSetKey != newlabelSetKey {
 		// This Pod is already counted in the old VPA, remove the link.
 		cluster.removePodFromItsVpa(pod)
+		// Invalidate cache entry when pod labels change
+		delete(cluster.podToVpaCache, podID)
+		// Also remove from namespace index
+		if nsMap, exists := cluster.podToVpaCacheByNamespace[podID.Namespace]; exists {
+			delete(nsMap, podID)
+		}
 	}
 	if !podExists || pod.labelSetKey != newlabelSetKey {
 		pod.labelSetKey = newlabelSetKey
@@ -210,6 +225,16 @@ func (cluster *clusterState) DeletePod(podID PodID) {
 		cluster.removePodFromItsVpa(pod)
 	}
 	delete(cluster.pods, podID)
+	// Invalidate cache entry when pod is deleted
+	delete(cluster.podToVpaCache, podID)
+	// Also remove from namespace index
+	if nsMap, exists := cluster.podToVpaCacheByNamespace[podID.Namespace]; exists {
+		delete(nsMap, podID)
+		// Clean up empty namespace map
+		if len(nsMap) == 0 {
+			delete(cluster.podToVpaCacheByNamespace, podID.Namespace)
+		}
+	}
 }
 
 // AddOrUpdateContainer creates a new container with the given ContainerID and
@@ -298,6 +323,15 @@ func (cluster *clusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)
 		}
 		vpa.PodCount = len(cluster.GetMatchingPods(vpa))
+		// Efficient namespace-scoped cache invalidation
+		// Simply remove the namespace mapping - pod cache entries will be lazily updated
+		if nsMap, exists := cluster.podToVpaCacheByNamespace[vpaID.Namespace]; exists {
+			// Invalidate all pod cache entries in this namespace
+			for podID := range nsMap {
+				delete(cluster.podToVpaCache, podID)
+			}
+			delete(cluster.podToVpaCacheByNamespace, vpaID.Namespace)
+		}
 	}
 	vpa.TargetRef = apiObject.Spec.TargetRef
 	vpa.Annotations = annotationsMap
@@ -320,6 +354,15 @@ func (cluster *clusterState) DeleteVpa(vpaID VpaID) error {
 	}
 	delete(cluster.vpas, vpaID)
 	delete(cluster.emptyVPAs, vpaID)
+	// Use namespace index for efficient cache invalidation
+	// Instead of scanning all pods, just invalidate the affected namespace
+	if nsMap, exists := cluster.podToVpaCacheByNamespace[vpaID.Namespace]; exists {
+		for podID := range nsMap {
+			delete(cluster.podToVpaCache, podID)
+		}
+		// Clear the namespace map since all entries were invalidated
+		delete(cluster.podToVpaCacheByNamespace, vpaID.Namespace)
+	}
 	return nil
 }
 
@@ -341,16 +384,40 @@ func (cluster *clusterState) ObservedVPAs() []*vpa_types.VerticalPodAutoscaler {
 
 func newPod(id PodID) *PodState {
 	return &PodState{
-		ID:         id,
-		Containers: make(map[string]*ContainerState),
+		ID:                id,
+		Containers:        make(map[string]*ContainerState),
+		initContainersSet: make(map[string]bool),
 	}
+}
+
+// IsInitContainer returns true if the given container name is an init container.
+func (pod *PodState) IsInitContainer(containerName string) bool {
+	// If initContainersSet is nil (e.g., in tests), fall back to slice search
+	if pod.initContainersSet == nil {
+		for _, name := range pod.InitContainers {
+			if name == containerName {
+				return true
+			}
+		}
+		return false
+	}
+	return pod.initContainersSet[containerName]
+}
+
+// AddInitContainer adds an init container name to the pod.
+func (pod *PodState) AddInitContainer(containerName string) {
+	pod.InitContainers = append(pod.InitContainers, containerName)
+	pod.initContainersSet[containerName] = true
 }
 
 // getLabelSetKey puts the given labelSet in the global labelSet map and returns a
 // corresponding labelSetKey.
 func (cluster *clusterState) getLabelSetKey(labelSet labels.Set) labelSetKey {
 	labelSetKey := labelSetKey(labelSet.String())
-	cluster.labelSetMap[labelSetKey] = labelSet
+	// Only insert if not already present to avoid duplicate entries
+	if _, exists := cluster.labelSetMap[labelSetKey]; !exists {
+		cluster.labelSetMap[labelSetKey] = labelSet
+	}
 	return labelSetKey
 }
 
@@ -403,7 +470,8 @@ func (cluster *clusterState) findOrCreateAggregateContainerState(containerID Con
 // 3) There are no samples and the aggregate state was created >8 days ago.
 func (cluster *clusterState) garbageCollectAggregateCollectionStates(ctx context.Context, now time.Time, controllerFetcher controllerfetcher.ControllerFetcher) {
 	klog.V(1).InfoS("Garbage collection of AggregateCollectionStates triggered")
-	keysToDelete := make([]AggregateStateKey, 0)
+	// Pre-allocate with estimated capacity to reduce allocations during GC
+	keysToDelete := make([]AggregateStateKey, 0, len(cluster.aggregateStateMap)/10)
 	contributiveKeys := cluster.getContributiveAggregateStateKeys(ctx, controllerFetcher)
 	for key, aggregateContainerState := range cluster.aggregateStateMap {
 		isKeyContributive := contributiveKeys[key]
@@ -483,7 +551,12 @@ func (cluster *clusterState) RecordRecommendation(vpa *Vpa, now time.Time) error
 // GetMatchingPods returns a list of currently active pods that match the
 // given VPA. Traverses through all pods in the cluster - use sparingly.
 func (cluster *clusterState) GetMatchingPods(vpa *Vpa) []PodID {
-	matchingPods := []PodID{}
+	// Pre-allocate with estimated capacity to reduce allocations
+	vpaCount := len(cluster.vpas)
+	if vpaCount == 0 {
+		vpaCount = 1 // Avoid division by zero
+	}
+	matchingPods := make([]PodID, 0, len(cluster.pods)/vpaCount+1)
 	for podID, pod := range cluster.pods {
 		if vpa_utils.PodLabelsMatchVPA(podID.Namespace, cluster.labelSetMap[pod.labelSetKey],
 			vpa.ID.Namespace, vpa.PodSelector) {
@@ -513,12 +586,27 @@ func (cluster *clusterState) GetControllerForPodUnderVPA(ctx context.Context, po
 
 // GetControllingVPA returns a VPA object controlling given Pod.
 func (cluster *clusterState) GetControllingVPA(pod *PodState) *Vpa {
+	// Check cache first for performance optimization
+	if cachedVpa, exists := cluster.podToVpaCache[pod.ID]; exists {
+		return cachedVpa
+	}
+
+	// Cache miss - perform linear search
 	for _, vpa := range cluster.vpas {
 		if vpa_utils.PodLabelsMatchVPA(pod.ID.Namespace, cluster.labelSetMap[pod.labelSetKey],
 			vpa.ID.Namespace, vpa.PodSelector) {
+			// Update cache before returning
+			cluster.podToVpaCache[pod.ID] = vpa
+			// Update namespace index for efficient invalidation
+			if cluster.podToVpaCacheByNamespace[pod.ID.Namespace] == nil {
+				cluster.podToVpaCacheByNamespace[pod.ID.Namespace] = make(map[PodID]bool)
+			}
+			cluster.podToVpaCacheByNamespace[pod.ID.Namespace][pod.ID] = true
 			return vpa
 		}
 	}
+	// Don't cache nil results to avoid unbounded cache growth
+	// for pods that don't match any VPA
 	return nil
 }
 

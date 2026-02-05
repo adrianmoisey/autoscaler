@@ -18,8 +18,8 @@ package checkpoint
 
 import (
 	"context"
-	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,16 +77,23 @@ func getVpasToCheckpoint(clusterVpas map[model.VpaID]*model.Vpa) []*model.Vpa {
 	return vpas
 }
 
-func processCheckpointUpdateForVPA(vpa *model.Vpa, writer *checkpointWriter) {
+func processCheckpointUpdateForVPA(ctx context.Context, vpa *model.Vpa, writer *checkpointWriter) {
 	now := time.Now()
 	aggregateContainerStateMap := buildAggregateContainerStateMap(vpa, writer.cluster, now)
+	// Pre-allocate string builder for checkpoint names to avoid allocations
+	var nameBuilder strings.Builder
 	for container, aggregatedContainerState := range aggregateContainerStateMap {
 		containerCheckpoint, err := aggregatedContainerState.SaveToCheckpoint()
 		if err != nil {
 			klog.ErrorS(err, "Cannot serialize checkpoint", "vpa", klog.KRef(vpa.ID.Namespace, vpa.ID.VpaName), "container", container)
 			continue
 		}
-		checkpointName := fmt.Sprintf("%s-%s", vpa.ID.VpaName, container)
+		// Build checkpoint name efficiently without fmt.Sprintf
+		nameBuilder.Reset()
+		nameBuilder.WriteString(vpa.ID.VpaName)
+		nameBuilder.WriteByte('-')
+		nameBuilder.WriteString(container)
+		checkpointName := nameBuilder.String()
 		vpaCheckpoint := vpa_types.VerticalPodAutoscalerCheckpoint{
 			ObjectMeta: metav1.ObjectMeta{Name: checkpointName},
 			Spec: vpa_types.VerticalPodAutoscalerCheckpointSpec{
@@ -95,7 +102,8 @@ func processCheckpointUpdateForVPA(vpa *model.Vpa, writer *checkpointWriter) {
 			},
 			Status: *containerCheckpoint,
 		}
-		err = api_util.CreateOrUpdateVpaCheckpoint(writer.vpaCheckpointClient.VerticalPodAutoscalerCheckpoints(vpa.ID.Namespace), &vpaCheckpoint)
+		// Use context-aware checkpoint creation for retry support
+		err = api_util.CreateOrUpdateVpaCheckpointWithContext(ctx, writer.vpaCheckpointClient.VerticalPodAutoscalerCheckpoints(vpa.ID.Namespace), &vpaCheckpoint)
 		if err != nil {
 			klog.ErrorS(err, "Cannot save checkpoint for VPA", "vpa", klog.KRef(vpa.ID.Namespace, vpaCheckpoint.Spec.VPAObjectName), "container", vpaCheckpoint.Spec.ContainerName)
 		} else {
@@ -119,7 +127,7 @@ func (writer *checkpointWriter) StoreCheckpoints(ctx context.Context, concurrent
 		go func() {
 			defer wg.Done()
 			for vpaToCheckpoint := range vpaCheckpointUpdates {
-				processCheckpointUpdateForVPA(vpaToCheckpoint, writer)
+				processCheckpointUpdateForVPA(ctx, vpaToCheckpoint, writer)
 				select {
 				case <-ctx.Done():
 					return

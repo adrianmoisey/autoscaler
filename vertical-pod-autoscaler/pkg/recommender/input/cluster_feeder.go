@@ -118,25 +118,50 @@ func WatchEvictionEventsWithRetries(ctx context.Context, kubeClient kube_client.
 			FieldSelector: "reason=Evicted",
 		}
 
-		watchEvictionEventsOnce := func() {
+		// Use exponential backoff for retries to be more resilient during API server issues
+		backoff := wait.Backoff{
+			Duration: 1 * time.Second,  // Start with 1 second
+			Factor:   2.0,               // Double on each failure
+			Jitter:   0.5,               // 50% jitter
+			Steps:    5,                 // Allow up to 5 exponential steps
+			Cap:      evictionWatchRetryWait, // Cap at original 10s max
+		}
+		currentStep := 0
+
+		watchEvictionEventsOnce := func() bool {
 			watchInterface, err := kubeClient.CoreV1().Events(namespace).Watch(ctx, options)
 			if err != nil {
 				klog.ErrorS(err, "Cannot initialize watching events")
-				return
+				return false // Indicate failure
 			}
 			defer watchInterface.Stop()
 			watchEvictionEvents(watchInterface.ResultChan(), observer)
+			return true // Indicate success
 		}
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				watchEvictionEventsOnce()
-				// Wait between attempts, retrying too often breaks API server.
-				waitTime := wait.Jitter(evictionWatchRetryWait, evictionWatchJitterFactor)
-				klog.V(1).InfoS("An attempt to watch eviction events finished", "waitTime", waitTime)
-				time.Sleep(waitTime)
+				success := watchEvictionEventsOnce()
+				
+				// On success, reset backoff step. On failure, increment for exponential backoff.
+				if success {
+					currentStep = 0
+				} else {
+					if currentStep < backoff.Steps {
+						currentStep++
+					}
+				}
+				
+				// Calculate wait time with exponential backoff
+				waitDuration := backoff.Step()
+				klog.V(1).InfoS("An attempt to watch eviction events finished", 
+					"waitTime", waitDuration, 
+					"backoffStep", currentStep,
+					"success", success)
+				time.Sleep(waitDuration)
 			}
 		}
 	}()
@@ -174,7 +199,9 @@ func newPodClients(kubeClient kube_client.Interface, resourceEventHandler cache.
 		ObjectType:    &apiv1.Pod{},
 		ListerWatcher: podListWatch,
 		Handler:       resourceEventHandler,
-		ResyncPeriod:  time.Hour,
+		// Reduced from 1 hour to 10 minutes for faster reconciliation in dynamic environments
+		// This ensures the cache stays reasonably fresh without overwhelming the API server
+		ResyncPeriod:  10 * time.Minute,
 		Indexers:      cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	}
 
@@ -378,7 +405,8 @@ func selectsRecommender(selectors []*vpa_types.VerticalPodAutoscalerRecommenderS
 // Filter VPA objects whose specified recommender names are not default
 func filterVPAs(feeder *clusterStateFeeder, allVpaCRDs []*vpa_types.VerticalPodAutoscaler) []*vpa_types.VerticalPodAutoscaler {
 	klog.V(3).InfoS("Start selecting the vpaCRDs.")
-	var vpaCRDs []*vpa_types.VerticalPodAutoscaler
+	// Pre-allocate with full capacity - worst case all VPAs pass filter
+	vpaCRDs := make([]*vpa_types.VerticalPodAutoscaler, 0, len(allVpaCRDs))
 	for _, vpaCRD := range allVpaCRDs {
 		if feeder.recommenderName == DefaultRecommenderName {
 			if !implicitDefaultRecommender(vpaCRD.Spec.Recommenders) && !selectsRecommender(vpaCRD.Spec.Recommenders, &feeder.recommenderName) {
@@ -482,9 +510,7 @@ func (feeder *clusterStateFeeder) LoadPods() {
 			}
 		}
 		for _, initContainer := range pod.InitContainers {
-			podInitContainers := feeder.clusterState.Pods()[pod.ID].InitContainers
-			feeder.clusterState.Pods()[pod.ID].InitContainers = append(podInitContainers, initContainer.ID.ContainerName)
-
+			feeder.clusterState.Pods()[pod.ID].AddInitContainer(initContainer.ID.ContainerName)
 		}
 	}
 }
@@ -500,7 +526,7 @@ func (feeder *clusterStateFeeder) LoadRealTimeMetrics(ctx context.Context) {
 	for _, containerMetrics := range containersMetrics {
 		// Container metrics are fetched for all pods, however, not all pod states are tracked in memory saver mode.
 		if pod, exists := feeder.clusterState.Pods()[containerMetrics.ID.PodID]; exists && pod != nil {
-			if slices.Contains(pod.InitContainers, containerMetrics.ID.ContainerName) {
+			if pod.IsInitContainer(containerMetrics.ID.ContainerName) {
 				klog.V(3).InfoS("Skipping metric samples for init container", "pod", klog.KRef(containerMetrics.ID.Namespace, containerMetrics.ID.PodName), "container", containerMetrics.ID.ContainerName)
 				droppedSampleCount += len(containerMetrics.Usage)
 				continue
@@ -546,7 +572,8 @@ func (feeder *clusterStateFeeder) matchesVPA(pod *spec.BasicPodSpec) bool {
 }
 
 func newContainerUsageSamplesWithKey(metrics *metrics.ContainerMetricsSnapshot) []*model.ContainerUsageSampleWithKey {
-	var samples []*model.ContainerUsageSampleWithKey
+	// Pre-allocate slice with exact capacity (typically 2 items: CPU and Memory)
+	samples := make([]*model.ContainerUsageSampleWithKey, 0, len(metrics.Usage))
 
 	for metricName, resourceAmount := range metrics.Usage {
 		sample := &model.ContainerUsageSampleWithKey{

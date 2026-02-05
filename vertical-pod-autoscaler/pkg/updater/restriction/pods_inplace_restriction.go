@@ -67,6 +67,8 @@ type PodsInPlaceRestrictionImpl struct {
 	patchCalculators             []patch.Calculator
 	clock                        clock.Clock
 	lastInPlaceAttemptTimeMap    map[string]time.Time
+	inPlaceDeferredTimeout       time.Duration
+	inPlaceInProgressTimeout     time.Duration
 }
 
 // CanInPlaceUpdate checks if pod can be safely updated
@@ -83,7 +85,7 @@ func (ip *PodsInPlaceRestrictionImpl) CanInPlaceUpdate(pod *apiv1.Pod) utils.InP
 		}
 		if present {
 			if isInPlaceUpdating(pod) {
-				canEvict := CanEvictInPlacingPod(pod, singleGroupStats, ip.lastInPlaceAttemptTimeMap, ip.clock)
+				canEvict := CanEvictInPlacingPod(pod, singleGroupStats, ip.lastInPlaceAttemptTimeMap, ip.clock, ip.inPlaceDeferredTimeout, ip.inPlaceInProgressTimeout)
 				if canEvict {
 					return utils.InPlaceEvict
 				}
@@ -172,7 +174,7 @@ func (ip *PodsInPlaceRestrictionImpl) InPlaceUpdate(podToUpdate *apiv1.Pod, vpa 
 }
 
 // CanEvictInPlacingPod checks if the pod can be evicted while it is currently in the middle of an in-place update.
-func CanEvictInPlacingPod(pod *apiv1.Pod, singleGroupStats singleGroupStats, lastInPlaceAttemptTimeMap map[string]time.Time, clock clock.Clock) bool {
+func CanEvictInPlacingPod(pod *apiv1.Pod, singleGroupStats singleGroupStats, lastInPlaceAttemptTimeMap map[string]time.Time, clock clock.Clock, inPlaceDeferredTimeout, inPlaceInProgressTimeout time.Duration) bool {
 	if !isInPlaceUpdating(pod) {
 		return false
 	}
@@ -186,14 +188,14 @@ func CanEvictInPlacingPod(pod *apiv1.Pod, singleGroupStats singleGroupStats, las
 	if singleGroupStats.isPodDisruptable() {
 		// if currently inPlaceUpdating, we should only fallback to eviction if the update has failed. i.e: one of the following conditions:
 		// - Infeasible
-		// - Deferred + more than 5 minutes has elapsed since the lastInPlaceUpdateTime
-		// - InProgress + more than 1 hour has elapsed since the lastInPlaceUpdateTime
+		// - Deferred + more than configured duration has elapsed since the lastInPlaceUpdateTime
+		// - InProgress + more than configured duration has elapsed since the lastInPlaceUpdateTime
 		resizePendingCondition, ok := utils.GetPodCondition(pod, apiv1.PodResizePending)
 		if ok {
 			switch resizePendingCondition.Reason {
 			case apiv1.PodReasonDeferred:
-				if clock.Since(lastUpdate) > DeferredResizeUpdateTimeout {
-					klog.V(4).InfoS(fmt.Sprintf("In-place update deferred for more than %v, falling back to eviction", DeferredResizeUpdateTimeout), "pod", klog.KObj(pod))
+				if clock.Since(lastUpdate) > inPlaceDeferredTimeout {
+					klog.V(4).InfoS(fmt.Sprintf("In-place update deferred for more than %v, falling back to eviction", inPlaceDeferredTimeout), "pod", klog.KObj(pod))
 					return true
 				}
 			case apiv1.PodReasonInfeasible:
@@ -207,8 +209,8 @@ func CanEvictInPlacingPod(pod *apiv1.Pod, singleGroupStats singleGroupStats, las
 			resizeInProgressCondition, ok := utils.GetPodCondition(pod, apiv1.PodResizeInProgress)
 			if ok {
 				if resizeInProgressCondition.Reason == "" && resizeInProgressCondition.Message == "" {
-					if clock.Since(lastUpdate) > InProgressResizeUpdateTimeout {
-						klog.V(4).InfoS(fmt.Sprintf("In-place update in progress for more than %v, falling back to eviction", InProgressResizeUpdateTimeout), "pod", klog.KObj(pod))
+					if clock.Since(lastUpdate) > inPlaceInProgressTimeout {
+						klog.V(4).InfoS(fmt.Sprintf("In-place update in progress for more than %v, falling back to eviction", inPlaceInProgressTimeout), "pod", klog.KObj(pod))
 						return true
 					}
 				} else if resizeInProgressCondition.Reason == apiv1.PodReasonError {
