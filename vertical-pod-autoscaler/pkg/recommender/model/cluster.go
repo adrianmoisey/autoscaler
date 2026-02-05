@@ -81,6 +81,9 @@ type clusterState struct {
 	labelSetMap labelSetMap
 	// Cache mapping pods to their controlling VPA for performance optimization.
 	podToVpaCache map[PodID]*Vpa
+	// Namespace-indexed cache for efficient invalidation by namespace.
+	// Maps namespace -> pod IDs in that namespace for O(k) invalidation.
+	podToVpaCacheByNamespace map[string]map[PodID]bool
 
 	lastAggregateContainerStateGC time.Time
 	gcInterval                    time.Duration
@@ -132,6 +135,7 @@ func NewClusterState(gcInterval time.Duration) *clusterState {
 		aggregateStateMap:             make(aggregateContainerStatesMap),
 		labelSetMap:                   make(labelSetMap),
 		podToVpaCache:                 make(map[PodID]*Vpa),
+		podToVpaCacheByNamespace:      make(map[string]map[PodID]bool),
 		lastAggregateContainerStateGC: time.Unix(0, 0),
 		gcInterval:                    gcInterval,
 	}
@@ -162,6 +166,10 @@ func (cluster *clusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, p
 		cluster.removePodFromItsVpa(pod)
 		// Invalidate cache entry when pod labels change
 		delete(cluster.podToVpaCache, podID)
+		// Also remove from namespace index
+		if nsMap, exists := cluster.podToVpaCacheByNamespace[podID.Namespace]; exists {
+			delete(nsMap, podID)
+		}
 	}
 	if !podExists || pod.labelSetKey != newlabelSetKey {
 		pod.labelSetKey = newlabelSetKey
@@ -217,6 +225,14 @@ func (cluster *clusterState) DeletePod(podID PodID) {
 	delete(cluster.pods, podID)
 	// Invalidate cache entry when pod is deleted
 	delete(cluster.podToVpaCache, podID)
+	// Also remove from namespace index
+	if nsMap, exists := cluster.podToVpaCacheByNamespace[podID.Namespace]; exists {
+		delete(nsMap, podID)
+		// Clean up empty namespace map
+		if len(nsMap) == 0 {
+			delete(cluster.podToVpaCacheByNamespace, podID.Namespace)
+		}
+	}
 }
 
 // AddOrUpdateContainer creates a new container with the given ContainerID and
@@ -305,12 +321,14 @@ func (cluster *clusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)
 		}
 		vpa.PodCount = len(cluster.GetMatchingPods(vpa))
-		// Selectively invalidate cache entries in the same namespace
-		// to avoid clearing the entire cache on every VPA change
-		for podID := range cluster.podToVpaCache {
-			if podID.Namespace == vpaID.Namespace {
+		// Use namespace index for efficient cache invalidation
+		// Instead of scanning all pods, just invalidate the affected namespace
+		if nsMap, exists := cluster.podToVpaCacheByNamespace[vpaID.Namespace]; exists {
+			for podID := range nsMap {
 				delete(cluster.podToVpaCache, podID)
 			}
+			// Clear the namespace map since all entries were invalidated
+			delete(cluster.podToVpaCacheByNamespace, vpaID.Namespace)
 		}
 	}
 	vpa.TargetRef = apiObject.Spec.TargetRef
@@ -334,12 +352,14 @@ func (cluster *clusterState) DeleteVpa(vpaID VpaID) error {
 	}
 	delete(cluster.vpas, vpaID)
 	delete(cluster.emptyVPAs, vpaID)
-	// Selectively invalidate cache entries in the same namespace
-	// to avoid clearing the entire cache on every VPA change
-	for podID := range cluster.podToVpaCache {
-		if podID.Namespace == vpaID.Namespace {
+	// Use namespace index for efficient cache invalidation
+	// Instead of scanning all pods, just invalidate the affected namespace
+	if nsMap, exists := cluster.podToVpaCacheByNamespace[vpaID.Namespace]; exists {
+		for podID := range nsMap {
 			delete(cluster.podToVpaCache, podID)
 		}
+		// Clear the namespace map since all entries were invalidated
+		delete(cluster.podToVpaCacheByNamespace, vpaID.Namespace)
 	}
 	return nil
 }
@@ -554,6 +574,11 @@ func (cluster *clusterState) GetControllingVPA(pod *PodState) *Vpa {
 			vpa.ID.Namespace, vpa.PodSelector) {
 			// Update cache before returning
 			cluster.podToVpaCache[pod.ID] = vpa
+			// Update namespace index for efficient invalidation
+			if cluster.podToVpaCacheByNamespace[pod.ID.Namespace] == nil {
+				cluster.podToVpaCacheByNamespace[pod.ID.Namespace] = make(map[PodID]bool)
+			}
+			cluster.podToVpaCacheByNamespace[pod.ID.Namespace][pod.ID] = true
 			return vpa
 		}
 	}

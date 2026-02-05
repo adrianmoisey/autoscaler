@@ -289,7 +289,13 @@ func (a *AggregateContainerState) UpdateFromPolicy(resourcePolicy *vpa_types.Con
 // grouping by the container name. The result is a map from the container name to the aggregation
 // from all input containers with the given name.
 func AggregateStateByContainerName(aggregateContainerStateMap aggregateContainerStatesMap) ContainerNameToAggregateStateMap {
-	containerNameToAggregateStateMap := make(ContainerNameToAggregateStateMap)
+	// Pre-allocate map with estimated capacity to reduce allocations
+	// Most pods have 1-3 containers, so estimate conservatively
+	estimatedContainers := len(aggregateContainerStateMap) / 2
+	if estimatedContainers < 4 {
+		estimatedContainers = 4
+	}
+	containerNameToAggregateStateMap := make(ContainerNameToAggregateStateMap, estimatedContainers)
 	for aggregationKey, aggregation := range aggregateContainerStateMap {
 		containerName := aggregationKey.ContainerName()
 		aggregateContainerState, isInitialized := containerNameToAggregateStateMap[containerName]

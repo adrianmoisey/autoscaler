@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,13 +81,20 @@ func getVpasToCheckpoint(clusterVpas map[model.VpaID]*model.Vpa) []*model.Vpa {
 func processCheckpointUpdateForVPA(vpa *model.Vpa, writer *checkpointWriter) {
 	now := time.Now()
 	aggregateContainerStateMap := buildAggregateContainerStateMap(vpa, writer.cluster, now)
+	// Pre-allocate string builder for checkpoint names to avoid allocations
+	var nameBuilder strings.Builder
 	for container, aggregatedContainerState := range aggregateContainerStateMap {
 		containerCheckpoint, err := aggregatedContainerState.SaveToCheckpoint()
 		if err != nil {
 			klog.ErrorS(err, "Cannot serialize checkpoint", "vpa", klog.KRef(vpa.ID.Namespace, vpa.ID.VpaName), "container", container)
 			continue
 		}
-		checkpointName := fmt.Sprintf("%s-%s", vpa.ID.VpaName, container)
+		// Build checkpoint name efficiently without fmt.Sprintf
+		nameBuilder.Reset()
+		nameBuilder.WriteString(vpa.ID.VpaName)
+		nameBuilder.WriteByte('-')
+		nameBuilder.WriteString(container)
+		checkpointName := nameBuilder.String()
 		vpaCheckpoint := vpa_types.VerticalPodAutoscalerCheckpoint{
 			ObjectMeta: metav1.ObjectMeta{Name: checkpointName},
 			Spec: vpa_types.VerticalPodAutoscalerCheckpointSpec{
