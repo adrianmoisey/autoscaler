@@ -199,7 +199,9 @@ func (u *updater) RunOnce(ctx context.Context) {
 		return
 	}
 	timer.ObserveStep("ListPods")
-	allLivePods := filterDeletedPods(podsList)
+	// Pods with DeletionTimestamp are now filtered at the cache level via transform function
+	// in newPodLister, so podsList already contains only live pods
+	allLivePods := podsList
 
 	// Pre-allocate pod slices for each VPA to reduce allocations during classification.
 	// This improves performance from O(pods) repeated append operations to O(1) amortized appends.
@@ -391,21 +393,54 @@ func filterNonEvictablePods(pods []*apiv1.Pod, evictionRestriction restriction.P
 	return filterPods(pods, evictionRestriction.CanEvict)
 }
 
-func filterDeletedPods(pods []*apiv1.Pod) []*apiv1.Pod {
-	return filterPods(pods, func(pod *apiv1.Pod) bool {
-		return pod.DeletionTimestamp == nil
-	})
+// shouldExcludePod returns true if a pod should be excluded from the cache.
+// Pods are excluded if they are terminating (have DeletionTimestamp set) or
+// have no assigned node (though field selector should already filter these).
+func shouldExcludePod(pod *apiv1.Pod) bool {
+	// Exclude terminating pods - these are being deleted
+	if pod.DeletionTimestamp != nil {
+		return true
+	}
+	// Exclude pods without nodes as a safety check (field selector should handle this)
+	if pod.Spec.NodeName == "" {
+		return true
+	}
+	return false
 }
 
 func newPodLister(kubeClient kube_client.Interface, namespace string) v1lister.PodLister {
 	selector := fields.ParseSelectorOrDie("spec.nodeName!=" + "" + ",status.phase!=" +
 		string(apiv1.PodSucceeded) + ",status.phase!=" + string(apiv1.PodFailed))
 	podListWatch := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "pods", namespace, selector)
-	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-	podLister := v1lister.NewPodLister(store)
-	podReflector := cache.NewReflector(podListWatch, &apiv1.Pod{}, store, time.Hour)
+	
+	// Transform function to filter pods at cache level
+	// This prevents storing unwanted pods in cache, reducing memory usage and list operation overhead
+	transformFunc := func(obj interface{}) (interface{}, error) {
+		pod, ok := obj.(*apiv1.Pod)
+		if !ok {
+			return obj, nil
+		}
+		// Filter out pods using our exclusion criteria
+		if shouldExcludePod(pod) {
+			return nil, nil
+		}
+		return obj, nil
+	}
+	
+	// Use NewInformerWithOptions to support transform function
+	informerOptions := cache.InformerOptions{
+		ListerWatcher: podListWatch,
+		ObjectType:    &apiv1.Pod{},
+		ResyncPeriod:  time.Hour,
+		Indexers:      cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		Transform:     transformFunc,
+	}
+	
+	store, controller := cache.NewInformerWithOptions(informerOptions)
+	podLister := v1lister.NewPodLister(store.(cache.Indexer))
+	
 	stopCh := make(chan struct{})
-	go podReflector.Run(stopCh)
+	go controller.Run(stopCh)
 
 	return podLister
 }
