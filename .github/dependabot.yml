@@ -6,6 +6,8 @@ updates:
     - "/vertical-pod-autoscaler/test/"
   schedule:
     interval: daily
+  cooldown:
+    default-days: 7
   labels:
     - "area/vertical-pod-autoscaler"
     - "release-note-none"
