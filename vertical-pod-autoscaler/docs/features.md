@@ -108,6 +108,10 @@ To enable this feature, set the `--round-memory-bytes` flag when running the VPA
 > - VPA v1.5.0 [beta]
 > - VPA v1.6.0 [ga]
 
+> [!WARNING]
+> FEATURE REQUIREMENTS:
+> Requires Kubernetes 1.33 or newer.
+
 VPA supports in-place updates to reduce disruption when applying resource recommendations. This feature leverages Kubernetes' in-place update capabilities (which is in beta as of Kubernetes 1.33) to modify container resources without requiring pod recreation.
 For more information, see [AEP-4016: Support for in place updates in VPA](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler/enhancements/4016-in-place-updates-support)
 
@@ -185,8 +189,13 @@ VPA provides metrics to track in-place update operations:
 
 ## Eviction-Free In-Place Updates (`InPlace`)
 
+> [!NOTE]
+> FEATURE STATE:
+> - VPA v1.7.0 [alpha]
+
 > [!WARNING]
-> FEATURE STATE: VPA v1.7.0 [alpha]
+> FEATURE REQUIREMENTS:
+> Requires Kubernetes 1.33 or newer.
 
 VPA supports an eviction-free in-place update mode for workloads where any disruption is unacceptable. Unlike `InPlaceOrRecreate`, this mode will never evict pods — it only attempts in-place updates and retries when cluster conditions change.
 For more information, see [AEP-8818: Eviction-Free In-Place Updates in VPA](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler/enhancements/8818-in-place-only)
@@ -259,8 +268,13 @@ The same in-place update metrics used for `InPlaceOrRecreate` apply to `InPlace`
 
 ## CPU Startup Boost
 
+> [!NOTE]
+> FEATURE STATE:
+> - VPA v1.7.0 [alpha]
+
 > [!WARNING]
-> FEATURE STATE: VPA v1.7.0 [alpha]
+> FEATURE REQUIREMENTS:
+> Requires Kubernetes 1.33 or newer.
 
 The CPU Startup Boost feature allows VPA to temporarily increase CPU requests and limits for containers during pod startup. This can help workloads that have high CPU demands during their initialization phase, such as Java applications, to start faster. Once the pod is considered `Ready` and an optional duration has passed, VPA scales the CPU resources back down to their normal levels using an in-place resize.
 
