@@ -40,6 +40,7 @@ jobs:
         shell: bash
         run: |
           cd base/vertical-pod-autoscaler
+          ls
           go test -run='^$' -bench=. -count=10 | tee ../../base.txt
           #go test -v -bench=BenchmarkRunOnce -benchmem -count=6 ./core/bench/... -args -gc true | tee ../../base.txt
 
