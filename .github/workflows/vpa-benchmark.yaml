@@ -41,14 +41,14 @@ jobs:
         run: |
           cd base/vertical-pod-autoscaler
           ls
-          go test -run='^$' -bench=. -count=10 | tee ../../base.txt
+          go test -run='^$' -bench=. -count=10 ./... | tee ../../base.txt
           #go test -v -bench=BenchmarkRunOnce -benchmem -count=6 ./core/bench/... -args -gc true | tee ../../base.txt
 
       - name: Run Benchmark (PR branch)
         shell: bash
         run: |
           cd pr/vertical-pod-autoscaler
-          go test -run='^$' -bench=. -count=10 | tee ../../pr.txt
+          go test -run='^$' -bench=. -count=10 ./... | tee ../../pr.txt
           #go test -v -bench=BenchmarkRunOnce -benchmem -count=6 ./core/bench/... -args -gc true | tee ../../pr.txt
 
       - name: Install benchstat
