@@ -45,8 +45,7 @@ There are the following steps of the release process:
 3. [ ] Build and stage images.
 4. [ ] Test the release.
 5. [ ] Promote image.
-6. [ ] Update Helm chart.
-7. [ ] Finalize release.
+6. [ ] Finalize release.
 
 ## Open issue to track the release
 
@@ -67,14 +66,14 @@ We use the issue to communicate what is state of the release.
 
 1. [ ] [Create a new branch](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-and-deleting-branches-within-your-repository) named `vpa-release-1.${next-minor}` from the
     merged change.
-2. [ ] In the **main branch**, change the version in
-    [common/version-go](https://github.com/kubernetes/autoscaler/blob/master/vertical-pod-autoscaler/common/version.go)
+2. [ ] In the **main branch**, change the versionCore constant in
+    [common/version.go](https://github.com/kubernetes/autoscaler/blob/master/vertical-pod-autoscaler/common/version.go)
     to `1.${next-minor}.0`.
 3. [ ] Commit and merge the change.
 
 ### New patch release
 
-1.  [ ] Bump the patch version number in VerticalPodAutoscalerVersion constant in
+1.  [ ] Bump the patch version number in versionCore constant in
     [common/version.go](https://github.com/kubernetes/autoscaler/blob/master/vertical-pod-autoscaler/common/version.go).
     Create a commit and merge by making a PR to the `vpa-release-1.${minor}` branch.
 
