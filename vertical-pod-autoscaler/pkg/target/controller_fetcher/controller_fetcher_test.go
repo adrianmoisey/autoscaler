@@ -125,28 +125,22 @@ func addController(t *testing.T, controller *controllerFetcher, obj runtime.Obje
 func TestControllerFetcher(t *testing.T) {
 	type testCase struct {
 		name          string
-		key           *ControllerKeyWithAPIVersion
+		key           ControllerKeyWithAPIVersion
 		objects       []runtime.Object
 		expectedKey   *ControllerKeyWithAPIVersion
 		expectedError error
 	}
 	for _, tc := range []testCase{
 		{
-			name:          "nils",
-			key:           nil,
-			expectedKey:   nil,
-			expectedError: nil,
-		},
-		{
 			name: "deployment doesn't exist",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			expectedKey:   nil,
 			expectedError: fmt.Errorf("Deployment %s/%s does not exist", testNamespace, testDeployment),
 		},
 		{
 			name: "deployment no parent",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -163,7 +157,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "deployment with parent",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testReplicaSet, Kind: "ReplicaSet", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -195,7 +189,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "StatefulSet",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testStatefulSet, Kind: "StatefulSet", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.StatefulSet{
 				TypeMeta: metav1.TypeMeta{
@@ -212,7 +206,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "DaemonSet",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDaemonSet, Kind: "DaemonSet", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.DaemonSet{
 				TypeMeta: metav1.TypeMeta{
@@ -229,7 +223,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "CronJob",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testJob, Kind: "Job", Namespace: testNamespace}},
 			objects: []runtime.Object{&batchv1.Job{
 				TypeMeta: metav1.TypeMeta{
@@ -261,7 +255,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "CronJob no parent",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testCronJob, Kind: "CronJob", Namespace: testNamespace}},
 			objects: []runtime.Object{&batchv1.CronJob{
 				TypeMeta: metav1.TypeMeta{
@@ -278,7 +272,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "rc no parent",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testReplicationController, Kind: "ReplicationController", Namespace: testNamespace}},
 			objects: []runtime.Object{&corev1.ReplicationController{
 				TypeMeta: metav1.TypeMeta{
@@ -295,7 +289,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "deployment cycle in ownership",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -319,7 +313,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "deployment, parent with no scale subresource",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -345,7 +339,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "deployment, parent not well known with scale subresource",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -371,7 +365,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "pod, parent is node",
-			key: &ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
+			key: ControllerKeyWithAPIVersion{ControllerKey: ControllerKey{
 				Name: testDeployment, Kind: "Deployment", Namespace: testNamespace}},
 			objects: []runtime.Object{&appsv1.Deployment{
 				TypeMeta: metav1.TypeMeta{
@@ -396,7 +390,7 @@ func TestControllerFetcher(t *testing.T) {
 		},
 		{
 			name: "custom resource with no scale subresource",
-			key: &ControllerKeyWithAPIVersion{
+			key: ControllerKeyWithAPIVersion{
 				ApiVersion: "Foo/Foo", ControllerKey: ControllerKey{
 					Name: "iCanNotScale", Kind: "NotScalingResource", Namespace: testNamespace},
 			},
@@ -410,11 +404,13 @@ func TestControllerFetcher(t *testing.T) {
 			for _, obj := range tc.objects {
 				addController(t, f, obj)
 			}
-			topMostWellKnownOrScalableController, err := f.FindTopMostWellKnownOrScalable(context.Background(), tc.key)
+			topMostWellKnownOrScalableController, found, err := f.FindTopMostWellKnownOrScalable(context.Background(), tc.key)
 			if tc.expectedKey == nil {
-				assert.Nil(t, topMostWellKnownOrScalableController)
+				assert.False(t, found)
+				assert.Equal(t, ControllerKeyWithAPIVersion{}, topMostWellKnownOrScalableController)
 			} else {
-				assert.Equal(t, tc.expectedKey, topMostWellKnownOrScalableController)
+				assert.True(t, found)
+				assert.Equal(t, *tc.expectedKey, topMostWellKnownOrScalableController)
 			}
 			if tc.expectedError == nil {
 				assert.Nil(t, err)

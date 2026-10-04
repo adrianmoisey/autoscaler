@@ -48,11 +48,11 @@ func BenchmarkFindParentControllerForPod(b *testing.B) {
 	var fetcher controllerfetcher.ControllerFetcher = controllerfetcher.FakeControllerFetcher{}
 
 	b.ReportAllocs()
-	got, err := FindParentControllerForPod(ctx, pod, fetcher)
-	if err != nil || got.Name != ownerName {
-		b.Fatalf("expected the pod's parent controller to be %s, got %v (err: %v)", ownerName, got, err)
+	got, found, err := FindParentControllerForPod(ctx, pod, fetcher)
+	if err != nil || !found || got.Name != ownerName {
+		b.Fatalf("expected the pod's parent controller to be %s, got %v (found: %t, err: %v)", ownerName, got, found, err)
 	}
 	for b.Loop() {
-		_, _ = FindParentControllerForPod(ctx, pod, fetcher)
+		_, _, _ = FindParentControllerForPod(ctx, pod, fetcher)
 	}
 }

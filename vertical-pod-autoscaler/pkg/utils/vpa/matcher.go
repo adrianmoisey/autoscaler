@@ -67,12 +67,12 @@ func NewControllingVPAFinder(vpaIndexer cache.Indexer, selectorFetcher target.Vp
 // matches the Pod's labels, along with that selector. Returns a nil VPA if
 // there is no such VPA.
 func (f *ControllingVPAFinder) GetControllingVPAForPod(ctx context.Context, pod *corev1.Pod) (*vpa_types.VerticalPodAutoscaler, labels.Selector) {
-	parentController, err := FindParentControllerForPod(ctx, pod, f.controllerFetcher)
+	parentController, found, err := FindParentControllerForPod(ctx, pod, f.controllerFetcher)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get parent controller for pod", "pod", klog.KObj(pod))
 		return nil, nil
 	}
-	if parentController == nil {
+	if !found {
 		return nil, nil
 	}
 

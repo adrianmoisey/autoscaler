@@ -648,12 +648,12 @@ func (u *updater) getControllingVPAForPod(ctx context.Context, pod *corev1.Pod) 
 // controllingVPAForPod returns the strongest VPA in vpasByTarget that targets
 // pod's parent controller and whose selector matches pod, or nil if there is none.
 func (u *updater) controllingVPAForPod(ctx context.Context, pod *corev1.Pod, vpasByTarget vpasByTargetController) *vpa_types.VerticalPodAutoscaler {
-	parentController, err := vpa_api_util.FindParentControllerForPod(ctx, pod, u.controllerFetcher)
+	parentController, found, err := vpa_api_util.FindParentControllerForPod(ctx, pod, u.controllerFetcher)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get parent controller for pod", "pod", klog.KObj(pod))
 		return nil
 	}
-	if parentController == nil {
+	if !found {
 		return nil
 	}
 	podLabels := labels.Set(pod.GetLabels())

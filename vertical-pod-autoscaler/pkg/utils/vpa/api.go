@@ -204,7 +204,8 @@ func Stronger(a, b *vpa_types.VerticalPodAutoscaler) bool {
 }
 
 // FindParentControllerForPod returns the parent controller (topmost well-known or scalable controller) for the given Pod.
-func FindParentControllerForPod(ctx context.Context, pod *corev1.Pod, ctrlFetcher controllerfetcher.ControllerFetcher) (*controllerfetcher.ControllerKeyWithAPIVersion, error) {
+// The returned bool is false if the Pod has no such controller.
+func FindParentControllerForPod(ctx context.Context, pod *corev1.Pod, ctrlFetcher controllerfetcher.ControllerFetcher) (controllerfetcher.ControllerKeyWithAPIVersion, bool, error) {
 	var ownerRefrence *metav1.OwnerReference
 	for i := range pod.OwnerReferences {
 		r := pod.OwnerReferences[i]
@@ -214,9 +215,9 @@ func FindParentControllerForPod(ctx context.Context, pod *corev1.Pod, ctrlFetche
 	}
 	if ownerRefrence == nil {
 		// If the pod has no ownerReference, it cannot be under a VPA.
-		return nil, nil
+		return controllerfetcher.ControllerKeyWithAPIVersion{}, false, nil
 	}
-	k := &controllerfetcher.ControllerKeyWithAPIVersion{
+	k := controllerfetcher.ControllerKeyWithAPIVersion{
 		ControllerKey: controllerfetcher.ControllerKey{
 			Namespace: pod.Namespace,
 			Kind:      ownerRefrence.Kind,
@@ -224,16 +225,19 @@ func FindParentControllerForPod(ctx context.Context, pod *corev1.Pod, ctrlFetche
 		},
 		ApiVersion: ownerRefrence.APIVersion,
 	}
-	controller, err := ctrlFetcher.FindTopMostWellKnownOrScalable(ctx, k)
+	controller, found, err := ctrlFetcher.FindTopMostWellKnownOrScalable(ctx, k)
 
 	// ignore NodeInvalidOwner error when looking for the parent controller for a Pod. While this _is_ an error when
 	// validating the targetRef of a VPA, this is a valid scenario when iterating over all Pods and finding their owner.
 	// vpa updater and admission-controller don't care about these Pods, because they cannot have a valid VPA point to
 	// them, so it is safe to ignore this here.
-	if err != nil && !errors.Is(err, controllerfetcher.ErrNodeInvalidOwner) {
-		return nil, err
+	if err != nil {
+		if errors.Is(err, controllerfetcher.ErrNodeInvalidOwner) {
+			return controllerfetcher.ControllerKeyWithAPIVersion{}, false, nil
+		}
+		return controllerfetcher.ControllerKeyWithAPIVersion{}, false, err
 	}
-	return controller, nil
+	return controller, found, nil
 }
 
 // GetUpdateMode returns the updatePolicy.updateMode for a given VPA.

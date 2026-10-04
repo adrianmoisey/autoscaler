@@ -351,9 +351,15 @@ func TestFindParentControllerForPod(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := FindParentControllerForPod(context.Background(), tc.pod, tc.ctrlFetcher)
+			got, found, err := FindParentControllerForPod(context.Background(), tc.pod, tc.ctrlFetcher)
 			assert.NoError(t, err, "Unexpected error occurred.")
-			assert.Equal(t, got, tc.expected)
+			if tc.expected == nil {
+				assert.False(t, found)
+				assert.Equal(t, controllerfetcher.ControllerKeyWithAPIVersion{}, got)
+			} else {
+				assert.True(t, found)
+				assert.Equal(t, *tc.expected, got)
+			}
 		})
 	}
 }

@@ -156,7 +156,7 @@ func TestControllingVPAFinder(t *testing.T) {
 			want: nil,
 		},
 		{
-			// For some Pods (which are *not* under VPA), controllerFetcher.FindTopMostWellKnownOrScalable returns nil,
+			// For some Pods (which are *not* under VPA), controllerFetcher.FindTopMostWellKnownOrScalable finds no controller,
 			// e.g. when the Pod owner is a custom resource which doesn't implement the /scale subresource.
 			name:        "parent controller not resolvable",
 			pod:         newPod("ns1", "sts-a"),

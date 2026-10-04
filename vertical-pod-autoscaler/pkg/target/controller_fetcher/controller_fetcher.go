@@ -78,8 +78,9 @@ type ControllerKeyWithAPIVersion struct {
 
 // ControllerFetcher is responsible for finding the topmost well-known or scalable controller
 type ControllerFetcher interface {
-	// FindTopMostWellKnownOrScalable returns topmost well-known or scalable controller. Error is returned if controller cannot be found.
-	FindTopMostWellKnownOrScalable(ctx context.Context, controller *ControllerKeyWithAPIVersion) (*ControllerKeyWithAPIVersion, error)
+	// FindTopMostWellKnownOrScalable returns topmost well-known or scalable controller. The returned bool is false if
+	// there is no such controller. Error is returned if controller cannot be found.
+	FindTopMostWellKnownOrScalable(ctx context.Context, controller ControllerKeyWithAPIVersion) (ControllerKeyWithAPIVersion, bool, error)
 }
 
 type controllerFetcher struct {
@@ -304,41 +305,38 @@ func (f *controllerFetcher) getOwnerForScaleResource(ctx context.Context, groupK
 	return nil, lastError
 }
 
-func (f *controllerFetcher) FindTopMostWellKnownOrScalable(ctx context.Context, key *ControllerKeyWithAPIVersion) (*ControllerKeyWithAPIVersion, error) {
-	if key == nil {
-		return nil, nil
-	}
+func (f *controllerFetcher) FindTopMostWellKnownOrScalable(ctx context.Context, key ControllerKeyWithAPIVersion) (ControllerKeyWithAPIVersion, bool, error) {
+	var topMostWellKnownOrScalable ControllerKeyWithAPIVersion
+	found := false
 
-	var topMostWellKnownOrScalable *ControllerKeyWithAPIVersion
-
-	wellKnownOrScalable := f.isWellKnownOrScalable(ctx, key)
+	wellKnownOrScalable := f.isWellKnownOrScalable(ctx, &key)
 	if wellKnownOrScalable {
-		topMostWellKnownOrScalable = key
+		topMostWellKnownOrScalable, found = key, true
 	}
 
 	visited := make(map[ControllerKeyWithAPIVersion]bool)
-	visited[*key] = true
+	visited[key] = true
 	for {
-		owner, err := f.getParentOfController(ctx, *key)
+		owner, err := f.getParentOfController(ctx, key)
 		if err != nil {
-			return nil, err
+			return ControllerKeyWithAPIVersion{}, false, err
 		}
 
 		if owner == nil {
-			return topMostWellKnownOrScalable, nil
+			return topMostWellKnownOrScalable, found, nil
 		}
 
 		wellKnownOrScalable = f.isWellKnownOrScalable(ctx, owner)
 		if wellKnownOrScalable {
-			topMostWellKnownOrScalable = owner
+			topMostWellKnownOrScalable, found = *owner, true
 		}
 
 		_, alreadyVisited := visited[*owner]
 		if alreadyVisited {
-			return nil, errors.New("cycle detected in ownership chain")
+			return ControllerKeyWithAPIVersion{}, false, errors.New("cycle detected in ownership chain")
 		}
-		visited[*key] = true
+		visited[key] = true
 
-		key = owner
+		key = *owner
 	}
 }

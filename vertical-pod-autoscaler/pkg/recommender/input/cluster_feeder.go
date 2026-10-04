@@ -578,14 +578,14 @@ func (feeder *clusterStateFeeder) validateTargetRef(ctx context.Context, vpa *vp
 		},
 		ApiVersion: vpa.Spec.TargetRef.APIVersion,
 	}
-	top, err := feeder.controllerFetcher.FindTopMostWellKnownOrScalable(ctx, &k)
+	top, found, err := feeder.controllerFetcher.FindTopMostWellKnownOrScalable(ctx, k)
 	if err != nil {
 		return false, condition{conditionType: vpa_types.ConfigUnsupported, delete: false, message: fmt.Sprintf("Error checking if target %s is a topmost well-known or scalable controller: %s", target, err)}
 	}
-	if top == nil {
+	if !found {
 		return false, condition{conditionType: vpa_types.ConfigUnsupported, delete: false, message: fmt.Sprintf("Unknown error during checking if target %s is a topmost well-known or scalable controller", target)}
 	}
-	if *top != k {
+	if top != k {
 		return false, condition{conditionType: vpa_types.ConfigUnsupported, delete: false, message: fmt.Sprintf("The target %s has a parent controller but it should point to a topmost well-known or scalable controller", target)}
 	}
 	return true, condition{}

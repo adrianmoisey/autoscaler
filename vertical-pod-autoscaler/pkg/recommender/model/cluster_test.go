@@ -68,8 +68,11 @@ type fakeControllerFetcher struct {
 	err error
 }
 
-func (f *fakeControllerFetcher) FindTopMostWellKnownOrScalable(_ context.Context, _ *controllerfetcher.ControllerKeyWithAPIVersion) (*controllerfetcher.ControllerKeyWithAPIVersion, error) {
-	return f.key, f.err
+func (f *fakeControllerFetcher) FindTopMostWellKnownOrScalable(_ context.Context, _ controllerfetcher.ControllerKeyWithAPIVersion) (controllerfetcher.ControllerKeyWithAPIVersion, bool, error) {
+	if f.key == nil {
+		return controllerfetcher.ControllerKeyWithAPIVersion{}, false, f.err
+	}
+	return *f.key, true, f.err
 }
 
 const testGcPeriod = time.Minute

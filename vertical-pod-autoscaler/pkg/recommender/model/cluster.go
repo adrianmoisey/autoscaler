@@ -524,7 +524,7 @@ func (cluster *clusterState) GetMatchingPods(vpa *Vpa) []PodID {
 func (cluster *clusterState) GetControllerForPodUnderVPA(ctx context.Context, pod *PodState, controllerFetcher controllerfetcher.ControllerFetcher) *controllerfetcher.ControllerKeyWithAPIVersion {
 	controllingVPA := cluster.GetControllingVPA(pod)
 	if controllingVPA != nil {
-		controller := &controllerfetcher.ControllerKeyWithAPIVersion{
+		controller := controllerfetcher.ControllerKeyWithAPIVersion{
 			ControllerKey: controllerfetcher.ControllerKey{
 				Namespace: controllingVPA.ID.Namespace,
 				Kind:      controllingVPA.TargetRef.Kind,
@@ -532,8 +532,11 @@ func (cluster *clusterState) GetControllerForPodUnderVPA(ctx context.Context, po
 			},
 			ApiVersion: controllingVPA.TargetRef.APIVersion,
 		}
-		topLevelController, _ := controllerFetcher.FindTopMostWellKnownOrScalable(ctx, controller)
-		return topLevelController
+		topLevelController, found, _ := controllerFetcher.FindTopMostWellKnownOrScalable(ctx, controller)
+		if !found {
+			return nil
+		}
+		return &topLevelController
 	}
 	return nil
 }
