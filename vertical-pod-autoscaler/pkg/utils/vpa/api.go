@@ -208,9 +208,9 @@ func Stronger(a, b *vpa_types.VerticalPodAutoscaler) bool {
 func FindParentControllerForPod(ctx context.Context, pod *corev1.Pod, ctrlFetcher controllerfetcher.ControllerFetcher) (controllerfetcher.ControllerKeyWithAPIVersion, bool, error) {
 	var ownerRefrence *metav1.OwnerReference
 	for i := range pod.OwnerReferences {
-		r := pod.OwnerReferences[i]
+		r := &pod.OwnerReferences[i]
 		if r.Controller != nil && *r.Controller {
-			ownerRefrence = &r
+			ownerRefrence = r
 		}
 	}
 	if ownerRefrence == nil {
