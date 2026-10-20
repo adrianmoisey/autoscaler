@@ -59,6 +59,9 @@ admissionController:
   # The number of old history revisions to retain to allow rollback.
   revisionHistoryLimit: 10
 
+  # Update strategy for the Admission Controller Deployment.
+  strategy: {}
+
   # Labels to add to the Admission Controller pod.
   podLabels: {}
 
@@ -263,6 +266,9 @@ recommender:
   # The number of old history revisions to retain to allow rollback.
   revisionHistoryLimit: 10
 
+  # Update strategy for the Recommender Deployment.
+  strategy: {}
+
   # Labels to add to the Recommender pod.
   podLabels: {}
 
@@ -449,3 +455,6 @@ crds:
   # crds.keep -- Whether to add the helm.sh/resource-policy: keep annotation to the CRDs,
   # so they are not removed by `helm uninstall`.
   keep: true
+
+# extraObjects -- Extra Kubernetes objects to deploy with the release, such as PodMonitors, NetworkPolicies or ConfigMaps. Each item is either a YAML map or a multi-line string, and is evaluated as a template. See the README for examples.
+extraObjects: []
