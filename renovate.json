@@ -30,6 +30,11 @@
   "postUpdateOptions": [
     "gomodTidyAll"
   ],
+  "dockerfile": {
+    "includePaths": [
+      "vertical-pod-autoscaler/pkg/**"
+    ]
+  },
   "packageRules": [
     {
       "description": "Go modules: also update indirect dependencies (Dependabot dependency-type: all).",
@@ -38,22 +43,36 @@
       "enabled": true
     },
     {
+      "description": "k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/client-go"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Indirect Go modules cannot be moved to a new major (module path) by us; the importing dependency has to do that.",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "master: group Kubernetes Go modules together.",
-      "matchBaseBranches": ["$default"],
+      "matchBaseBranches": ["master"],
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**"],
       "groupName": "go deps (kubernetes only)"
     },
     {
       "description": "master: group all other Go modules together.",
-      "matchBaseBranches": ["$default"],
+      "matchBaseBranches": ["master"],
       "matchManagers": ["gomod"],
       "matchPackageNames": ["!k8s.io/**", "!sigs.k8s.io/**"],
       "groupName": "go deps"
     },
     {
       "description": "master: check Dockerfile base images daily and group non-major bumps.",
-      "matchBaseBranches": ["$default"],
+      "matchBaseBranches": ["master"],
       "matchManagers": ["dockerfile"],
       "extends": ["schedule:daily"],
       "matchUpdateTypes": ["minor", "patch"],
@@ -66,12 +85,11 @@
       "enabled": false
     },
     {
-      "description": "Release branches: pre-1.0 Go modules (golang.org/x/*, etc.) treat minor bumps as patch-level, so allow them; Kubernetes modules stay patch-only.",
+      "description": "Release branches: golang.org/x modules are permanently pre-1.0 and treat minor bumps as patch-level, so allow those.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["minor"],
-      "matchCurrentVersion": "/^v?0\\./",
-      "matchPackageNames": ["!k8s.io/**", "!sigs.k8s.io/**"],
+      "matchPackageNames": ["golang.org/x/**"],
       "enabled": true
     },
     {
