@@ -60,6 +60,11 @@
       "groupName": "docker images"
     },
     {
+      "description": "Release branches: Renovate normally offers only the highest non-major version; splitting patch from minor makes it also offer the highest patch when the minor is blocked.",
+      "matchBaseBranches": ["/^vpa-release-/"],
+      "separateMinorPatch": true
+    },
+    {
       "description": "Release branches: no major or minor updates by default.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchUpdateTypes": ["major", "minor"],
