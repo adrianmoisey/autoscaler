@@ -101,6 +101,12 @@
       "description": "Release branches: everything that is still enabled goes into a single PR.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "groupName": "release-branch updates"
+    },
+    {
+      "description": "Keep fsnotify at or below 1.9.0 to match the restriction in vertical-pod-autoscaler/.golangci.yaml.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/fsnotify/fsnotify"],
+      "allowedVersions": "<=1.9.0"
     }
   ]
 }
