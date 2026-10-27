@@ -37,6 +37,11 @@
   },
   "packageRules": [
     {
+      "description": "Only update Go dependencies to versions compatible with the module's Go version.",
+      "matchManagers": ["gomod"],
+      "constraintsFiltering": "strict"
+    },
+    {
       "description": "Go modules: also update indirect dependencies (Dependabot dependency-type: all).",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
