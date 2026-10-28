@@ -36,16 +36,22 @@
   },
   "packageRules": [
     {
-      "description": "Dockerfiles: disable everything by default; the rule below opts specific updates back in.",
+      "description": "Dockerfiles: only the golang base image is managed; ignore all other images (e.g. distroless).",
       "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["!golang"],
       "enabled": false
     },
     {
-      "description": "Dockerfiles: keep the golang base image on the latest patch release of the Go minor already used by each branch. Minor/major Go bumps are done manually.",
+      "description": "Dockerfiles: keep the golang base image on the latest patch release of the Go minor already used by each branch. Minor/major Go bumps are done manually. (Disabling by update type rather than a blanket disable + re-enable is required: dep-level disables are applied before lookup and cannot be undone by update-type rules.)",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["golang"],
-      "matchUpdateTypes": ["patch"],
-      "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "digest", "pin", "pinDigest"],
+      "enabled": false
+    },
+    {
+      "description": "Dockerfiles: bundle the golang image bump across the three component Dockerfiles into one PR.",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["golang"],
       "groupName": "golang docker image"
     },
     {
@@ -108,9 +114,10 @@
       "groupName": "go deps"
     },
     {
-      "description": "Go modules on release branches: start from nothing enabled; the rules below opt patch-level updates back in. Must come after the general gomod rules above (notably the indirect enable).",
+      "description": "Go modules on release branches: only patch-level updates. Disabling by update type (not a blanket disable) is required, because dep-level disables are applied before lookup and cannot be undone by update-type rules.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major", "minor", "digest", "replacement"],
       "enabled": false
     },
     {
@@ -118,13 +125,6 @@
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
       "separateMinorPatch": true
-    },
-    {
-      "description": "Go modules on release branches: allow patch updates.",
-      "matchBaseBranches": ["/^vpa-release-/"],
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["patch"],
-      "enabled": true
     },
     {
       "description": "Go modules on release branches: for pre-1.0 modules a minor bump is the patch-level release (e.g. golang.org/x/*), so allow those too. Kubernetes modules are v0.x but their minor is a Kubernetes minor, so they stay patch-only.",
