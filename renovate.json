@@ -28,7 +28,7 @@
     "ok-to-test"
   ],
   "postUpdateOptions": [
-    "gomodTidyAll"
+    "gomodTidy"
   ],
   "dockerfile": {
     "includePaths": [
