@@ -17,8 +17,7 @@
   "baseBranchPatterns": [
     "$default",
     "vpa-release-1.8",
-    "vpa-release-1.7",
-    "vpa-release-1.6"
+    "vpa-release-1.7"
   ],
   "labels": [
     "area/vertical-pod-autoscaler",
