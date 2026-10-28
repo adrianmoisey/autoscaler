@@ -1,9 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate is scoped to the vertical-pod-autoscaler project only; the rest of the repository is handled by Dependabot. Policy: Docker base images and Kubernetes modules get patch updates on master and the three latest release branches; golang.org/x modules get minor updates everywhere; all other Go modules are kept at latest on master and get patch updates on release branches. Note: Renovate applies dep-level `enabled: false` rules before version lookup and cannot undo them with update-type rules afterwards, so restrictions below are expressed via matchUpdateTypes rather than blanket disables.",
+  "description": "Renovate is scoped to the vertical-pod-autoscaler project only; the rest of the repository is handled by Dependabot. Policy: Docker base images and Kubernetes modules get patch updates on master and the three latest release branches (checked daily); golang.org/x modules get minor updates everywhere; all other Go modules are kept at latest on master and get patch updates on release branches (checked weekly). Note: Renovate applies dep-level `enabled: false` rules before version lookup and cannot undo them with update-type rules afterwards, so restrictions below are expressed via matchUpdateTypes rather than blanket disables.",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "schedule:weekly"
   ],
+  "timezone": "Etc/UTC",
   "enabledManagers": [
     "dockerfile",
     "gomod"
@@ -42,9 +44,10 @@
       "enabled": false
     },
     {
-      "description": "1. Docker images: one PR per branch.",
+      "description": "1. Docker images: one PR per branch, checked daily.",
       "matchManagers": ["dockerfile"],
-      "groupName": "docker images"
+      "groupName": "docker images",
+      "extends": ["schedule:daily"]
     },
     {
       "description": "Go modules: only propose versions whose go.mod `go` directive is satisfied by ours, so dependency bumps never force a Go minor bump.",
@@ -91,13 +94,15 @@
       "enabled": false
     },
     {
+      "description": "2. Kubernetes modules: one PR per branch, checked daily.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/**"],
       "separateMinorPatch": true,
-      "groupName": "kubernetes go deps"
+      "groupName": "kubernetes go deps",
+      "extends": ["schedule:daily"]
     },
     {
-      "description": "3.-5. Everything that is not a Kubernetes module goes into one PR per branch. On master this means latest versions; the release-branch rules below narrow it down.",
+      "description": "3.-5. Everything that is not a Kubernetes module goes into one PR per branch, checked weekly (the repository default). On master this means latest versions; the release-branch rules below narrow it down.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["!k8s.io/**"],
       "groupName": "go deps"
