@@ -42,17 +42,17 @@
       "constraintsFiltering": "strict"
     },
     {
-      "description": "k8s.io/kube-openapi and friends are untagged and must track the k8s.io/apimachinery release; don't bump their digests independently.",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["k8s.io/kube-openapi", "k8s.io/utils", "sigs.k8s.io/json", "sigs.k8s.io/structured-merge-diff/**"],
-      "matchUpdateTypes": ["digest"],
-      "enabled": false
-    },
-    {
       "description": "Go modules: also update indirect dependencies (Dependabot dependency-type: all).",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
       "enabled": true
+    },
+    {
+      "description": "k8s.io/kube-openapi and friends are untagged and must track the k8s.io/apimachinery release; don't bump their digests independently. Must come after the indirect enable rule above.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/kube-openapi", "k8s.io/utils", "sigs.k8s.io/json", "sigs.k8s.io/structured-merge-diff/**"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
     },
     {
       "description": "k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
