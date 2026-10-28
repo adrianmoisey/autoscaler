@@ -1,13 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate is scoped to the vertical-pod-autoscaler project only; the rest of the repository is handled by Dependabot.",
+  "description": "Renovate is scoped to the vertical-pod-autoscaler project only; the rest of the repository is handled by Dependabot. It keeps the Go base image in the VPA Dockerfiles on the latest patch release on all maintained branches, updates Go modules on master, and applies patch-level Go module updates on release branches.",
   "extends": [
-    "config:recommended",
-    "schedule:weekly"
+    "config:recommended"
   ],
   "enabledManagers": [
-    "gomod",
-    "dockerfile"
+    "dockerfile",
+    "gomod"
   ],
   "includePaths": [
     "vertical-pod-autoscaler/**"
@@ -18,7 +17,8 @@
   "baseBranchPatterns": [
     "$default",
     "vpa-release-1.8",
-    "vpa-release-1.7"
+    "vpa-release-1.7",
+    "vpa-release-1.6"
   ],
   "labels": [
     "area/vertical-pod-autoscaler",
@@ -37,108 +37,124 @@
   },
   "packageRules": [
     {
-      "description": "Only update Go dependencies to versions compatible with the module's Go version.",
+      "description": "Dockerfiles: disable everything by default; the rule below opts specific updates back in.",
+      "matchManagers": ["dockerfile"],
+      "enabled": false
+    },
+    {
+      "description": "Dockerfiles: keep the golang base image on the latest patch release of the Go minor already used by each branch. Minor/major Go bumps are done manually.",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["golang"],
+      "matchUpdateTypes": ["patch"],
+      "enabled": true,
+      "groupName": "golang docker image"
+    },
+    {
+      "description": "Go modules: only propose versions whose go.mod `go` directive is satisfied by ours, so dependency bumps never force a Go minor bump.",
       "matchManagers": ["gomod"],
       "constraintsFiltering": "strict"
     },
     {
-      "description": "Go modules: also update indirect dependencies (Dependabot dependency-type: all).",
+      "description": "Go modules: also update indirect dependencies (Dependabot dependency-type: all). Rules that disable indirect updates must come after this one.",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
       "enabled": true
     },
     {
-      "description": "k8s.io/kube-openapi and friends are untagged and must track the k8s.io/apimachinery release; don't bump their digests independently. Must come after the indirect enable rule above.",
+      "description": "Go modules: indirect dependencies cannot be moved to a new major (module path) by us; the importing dependency has to do that.",
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["k8s.io/kube-openapi", "k8s.io/utils", "sigs.k8s.io/json", "sigs.k8s.io/structured-merge-diff/**"],
-      "matchUpdateTypes": ["digest"],
+      "matchDepTypes": ["indirect"],
+      "matchUpdateTypes": ["major"],
       "enabled": false
     },
     {
-      "description": "github.com/euank/go-kmsg-parser's v2.0.1 tag ships a go.mod without the /v2 module path, so Go rejects it; stay on v2.0.0+incompatible until upstream fixes their tagging.",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/euank/go-kmsg-parser"],
-      "enabled": false
-    },
-    {
-      "description": "Pre-modules +incompatible pseudo-versions cannot follow newer commits once upstream adds a go.mod with a /vN module path (e.g. github.com/mistifyio/go-zfs -> /v4); the importing dependency has to make that move.",
-      "matchManagers": ["gomod"],
-      "matchCurrentValue": "/\\+incompatible$/",
-      "matchUpdateTypes": ["digest"],
-      "enabled": false
-    },
-    {
-      "description": "k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
+      "description": "Go modules: k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/client-go"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     },
     {
-      "description": "Indirect Go modules cannot be moved to a new major (module path) by us; the importing dependency has to do that.",
+      "description": "Go modules: k8s.io/kube-openapi and friends are untagged and must track the k8s.io/apimachinery release (their default branch may require a newer Go or a new structured-merge-diff major); don't bump their digests independently.",
       "matchManagers": ["gomod"],
-      "matchDepTypes": ["indirect"],
-      "matchUpdateTypes": ["major"],
+      "matchPackageNames": ["k8s.io/kube-openapi", "k8s.io/utils", "sigs.k8s.io/json", "sigs.k8s.io/structured-merge-diff/**"],
+      "matchUpdateTypes": ["digest"],
       "enabled": false
     },
     {
-      "description": "master: group Kubernetes Go modules together.",
+      "description": "Go modules: pre-modules +incompatible pseudo-versions cannot follow newer commits once upstream adds a go.mod with a /vN module path; the importing dependency has to make that move.",
+      "matchManagers": ["gomod"],
+      "matchCurrentValue": "/\\+incompatible$/",
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
+    },
+    {
+      "description": "Go modules: keep fsnotify at or below 1.9.0 to match the gomodguard restriction in vertical-pod-autoscaler/.golangci.yaml.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/fsnotify/fsnotify"],
+      "allowedVersions": "<=1.9.0"
+    },
+    {
+      "description": "Go modules on master: bundle Kubernetes modules into one PR.",
       "matchBaseBranches": ["master"],
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**"],
       "groupName": "go deps (kubernetes only)"
     },
     {
-      "description": "master: group all other Go modules together.",
+      "description": "Go modules on master: bundle all other modules into one PR.",
       "matchBaseBranches": ["master"],
       "matchManagers": ["gomod"],
       "matchPackageNames": ["!k8s.io/**", "!sigs.k8s.io/**"],
       "groupName": "go deps"
     },
     {
-      "description": "master: check Dockerfile base images daily and group non-major bumps.",
-      "matchBaseBranches": ["master"],
-      "matchManagers": ["dockerfile"],
-      "extends": ["schedule:daily"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "docker images"
-    },
-    {
-      "description": "Release branches: Renovate normally offers only the highest non-major version; splitting patch from minor makes it also offer the highest patch when the minor is blocked.",
+      "description": "Go modules on release branches: start from nothing enabled; the rules below opt patch-level updates back in. Must come after the general gomod rules above (notably the indirect enable).",
       "matchBaseBranches": ["/^vpa-release-/"],
-      "separateMinorPatch": true
-    },
-    {
-      "description": "Release branches: no major, minor or digest updates by default; digests track untagged default-branch commits, which are never patch-level.",
-      "matchBaseBranches": ["/^vpa-release-/"],
-      "matchUpdateTypes": ["major", "minor", "digest"],
+      "matchManagers": ["gomod"],
       "enabled": false
     },
     {
-      "description": "Release branches: golang.org/x modules are permanently pre-1.0 and treat minor bumps as patch-level, so allow those.",
+      "description": "Go modules on release branches: Renovate normally offers only the highest non-major version; splitting patch from minor makes it offer the highest patch when the minor is blocked.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["minor"],
-      "matchPackageNames": ["golang.org/x/**"],
+      "separateMinorPatch": true
+    },
+    {
+      "description": "Go modules on release branches: allow patch updates.",
+      "matchBaseBranches": ["/^vpa-release-/"],
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
       "enabled": true
     },
     {
-      "description": "Release branches: k8s.io/kubernetes requires its staging modules at v0.0.0 via replace directives, so Go cannot keep them in lockstep; its tag also appears before the staging modules are published. Bump it manually together with k8s.io/api, apimachinery, client-go, etc.",
+      "description": "Go modules on release branches: for pre-1.0 modules a minor bump is the patch-level release (e.g. golang.org/x/*), so allow those too. Kubernetes modules are v0.x but their minor is a Kubernetes minor, so they stay patch-only.",
+      "matchBaseBranches": ["/^vpa-release-/"],
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "<1.0.0",
+      "matchPackageNames": ["!k8s.io/**", "!sigs.k8s.io/**"],
+      "enabled": true
+    },
+    {
+      "description": "Go modules on release branches: k8s.io/kubernetes requires its staging modules at v0.0.0 via replace directives, so Go cannot keep them in lockstep, and its tag appears before the staging modules are published. Bump it manually together with k8s.io/api, apimachinery, client-go, etc.",
       "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/kubernetes"],
       "enabled": false
     },
     {
-      "description": "Release branches: everything that is still enabled goes into a single PR.",
+      "description": "Go modules on release branches: github.com/euank/go-kmsg-parser's v2.0.1 tag ships a go.mod without the /v2 module path, so Go rejects it; stay on v2.0.0+incompatible.",
       "matchBaseBranches": ["/^vpa-release-/"],
-      "groupName": "release-branch updates"
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/euank/go-kmsg-parser"],
+      "enabled": false
     },
     {
-      "description": "Keep fsnotify at or below 1.9.0 to match the restriction in vertical-pod-autoscaler/.golangci.yaml.",
+      "description": "Go modules on release branches: everything that is still enabled goes into a single PR.",
+      "matchBaseBranches": ["/^vpa-release-/"],
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/fsnotify/fsnotify"],
-      "allowedVersions": "<=1.9.0"
+      "groupName": "release-branch go deps"
     }
   ]
 }
