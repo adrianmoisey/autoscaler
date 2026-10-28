@@ -55,6 +55,12 @@
       "enabled": false
     },
     {
+      "description": "github.com/euank/go-kmsg-parser's v2.0.1 tag ships a go.mod without the /v2 module path, so Go rejects it; stay on v2.0.0+incompatible until upstream fixes their tagging.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/euank/go-kmsg-parser"],
+      "enabled": false
+    },
+    {
       "description": "k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/client-go"],
@@ -108,6 +114,13 @@
       "matchUpdateTypes": ["minor"],
       "matchPackageNames": ["golang.org/x/**"],
       "enabled": true
+    },
+    {
+      "description": "Release branches: k8s.io/kubernetes requires its staging modules at v0.0.0 via replace directives, so Go cannot keep them in lockstep; its tag also appears before the staging modules are published. Bump it manually together with k8s.io/api, apimachinery, client-go, etc.",
+      "matchBaseBranches": ["/^vpa-release-/"],
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/kubernetes"],
+      "enabled": false
     },
     {
       "description": "Release branches: everything that is still enabled goes into a single PR.",
