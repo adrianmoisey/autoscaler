@@ -61,6 +61,13 @@
       "enabled": false
     },
     {
+      "description": "Pre-modules +incompatible pseudo-versions cannot follow newer commits once upstream adds a go.mod with a /vN module path (e.g. github.com/mistifyio/go-zfs -> /v4); the importing dependency has to make that move.",
+      "matchManagers": ["gomod"],
+      "matchCurrentValue": "/\\+incompatible$/",
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
+    },
+    {
       "description": "k8s.io/client-go only has legacy vN tags above v0.x (v11.0.0+incompatible); never propose them.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["k8s.io/client-go"],
@@ -102,9 +109,9 @@
       "separateMinorPatch": true
     },
     {
-      "description": "Release branches: no major or minor updates by default.",
+      "description": "Release branches: no major, minor or digest updates by default; digests track untagged default-branch commits, which are never patch-level.",
       "matchBaseBranches": ["/^vpa-release-/"],
-      "matchUpdateTypes": ["major", "minor"],
+      "matchUpdateTypes": ["major", "minor", "digest"],
       "enabled": false
     },
     {
