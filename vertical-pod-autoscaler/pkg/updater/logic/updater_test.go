@@ -19,6 +19,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"maps"
 	"strconv"
 	"testing"
 	"time"
@@ -47,6 +48,7 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/patch"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/recommendation"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	vpa_scheme "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned/scheme"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/features"
 	controllerfetcher "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target/controller_fetcher"
 	target_mock "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target/mock"
@@ -689,56 +691,86 @@ func TestRunOnceIgnoreNamespaceMatching(t *testing.T) {
 }
 
 func TestNewEventRecorder(t *testing.T) {
-	fakeClient := fake.NewClientset()
-	er := newEventRecorder(fakeClient)
-
-	maxRetries := 5
-	retryDelay := 100 * time.Millisecond
-	contextTimeout := 5 * time.Second
-
 	testCases := []struct {
+		name    string
 		reason  string
 		object  runtime.Object
 		message string
+		kind    string
+		version string
 	}{
 		{
-			reason:  "EvictedPod",
-			object:  &corev1.Pod{},
+			name:    "pod",
+			reason:  "EvictedByVPA",
+			object:  &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "default"}},
 			message: "Evicted pod",
+			kind:    "Pod",
+			version: "v1",
 		},
 		{
+			name:    "vpa",
 			reason:  "EvictedPod",
-			object:  &vpa_types.VerticalPodAutoscaler{},
+			object:  &vpa_types.VerticalPodAutoscaler{ObjectMeta: metav1.ObjectMeta{Name: "test-vpa", Namespace: "default"}},
 			message: "Evicted pod",
+			kind:    "VerticalPodAutoscaler",
+			version: "autoscaling.k8s.io/v1",
 		},
 	}
 	for _, tc := range testCases {
-		t.Run(tc.reason, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientset()
+			er := newEventRecorder(fakeClient)
 			er.Event(tc.object, corev1.EventTypeNormal, tc.reason, tc.message)
 
 			var events *corev1.EventList
-			var err error
-			// Add delay for fake client to catch up due to be being asynchronous
-			for range maxRetries {
-				ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
-				defer cancel()
-				events, err = fakeClient.CoreV1().Events("default").List(ctx, metav1.ListOptions{})
-				if err == nil && len(events.Items) > 0 {
-					break
-				}
-				time.Sleep(retryDelay)
-			}
-
-			assert.NoError(t, err, "should be able to list events")
-			assert.Equal(t, 1, len(events.Items), "should have exactly 1 event")
+			require.Eventually(t, func() bool {
+				var err error
+				events, err = fakeClient.CoreV1().Events("default").List(context.Background(), metav1.ListOptions{})
+				return err == nil && len(events.Items) == 1
+			}, 5*time.Second, 100*time.Millisecond)
 
 			event := events.Items[0]
 			assert.Equal(t, tc.reason, event.Reason)
 			assert.Equal(t, tc.message, event.Message)
 			assert.Equal(t, corev1.EventTypeNormal, event.Type)
 			assert.Equal(t, "vpa-updater", event.Source.Component)
+			assert.Equal(t, tc.kind, event.InvolvedObject.Kind)
+			assert.Equal(t, tc.version, event.InvolvedObject.APIVersion)
+			assert.Equal(t, tc.object.(metav1.Object).GetName(), event.InvolvedObject.Name)
+			assert.Equal(t, "default", event.InvolvedObject.Namespace)
 		})
 	}
+}
+
+func TestNewEventRecorderDoesNotModifyClientScheme(t *testing.T) {
+	knownTypes := maps.Clone(vpa_scheme.Scheme.AllKnownTypes())
+	gvk := vpa_types.SchemeGroupVersion.WithKind("VerticalPodAutoscaler")
+	_, err := vpa_scheme.Scheme.New(gvk)
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		for {
+			select {
+			case <-stop:
+				done <- nil
+				return
+			default:
+				if _, err := vpa_scheme.Scheme.New(gvk); err != nil {
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	<-started
+	newEventRecorder(fake.NewClientset())
+	close(stop)
+	require.NoError(t, <-done)
+	assert.Equal(t, knownTypes, vpa_scheme.Scheme.AllKnownTypes(), "recorder must not modify the VPA client scheme")
 }
 
 func TestLogDeprecationWarnings(t *testing.T) {

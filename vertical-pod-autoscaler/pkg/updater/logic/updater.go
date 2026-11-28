@@ -28,11 +28,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	kube_client "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	corescheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	listersv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -44,7 +45,7 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/patch"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
-	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned/scheme"
+	vpa_scheme "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned/scheme"
 	vpa_lister "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/listers/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/features"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
@@ -767,6 +768,18 @@ func filterDeletedPods(pods []*corev1.Pod) []*corev1.Pod {
 }
 
 func newEventRecorder(kubeClient kube_client.Interface) record.EventRecorder {
+	// The VPA client scheme may already be in use by the watch decoder.
+	eventScheme := runtime.NewScheme()
+	metav1.AddToGroupVersion(eventScheme, corev1.SchemeGroupVersion)
+	if err := vpa_scheme.AddToScheme(eventScheme); err != nil {
+		klog.ErrorS(err, "Error adding VPA scheme")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+	if err := scheme.AddToScheme(eventScheme); err != nil {
+		klog.ErrorS(err, "Error adding core scheme")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(4)
 	if _, isFake := kubeClient.(*fake.Clientset); !isFake {
@@ -775,13 +788,7 @@ func newEventRecorder(kubeClient kube_client.Interface) record.EventRecorder {
 		eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	}
 
-	vpascheme := scheme.Scheme
-	if err := corescheme.AddToScheme(vpascheme); err != nil {
-		klog.ErrorS(err, "Error adding core scheme")
-		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
-	}
-
-	return eventBroadcaster.NewRecorder(vpascheme, corev1.EventSource{Component: "vpa-updater"})
+	return eventBroadcaster.NewRecorder(eventScheme, corev1.EventSource{Component: "vpa-updater"})
 }
 
 // isInfeasibleError checks if an error indicates the resize is infeasible
